@@ -1,0 +1,486 @@
+import streamlit as st
+import pandas as pd
+import numpy as np
+import sys
+import os
+from datetime import datetime, date
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
+from src.etl.conexion import query_pg
+from src.etl.calculos_sir import (
+    dias_habiles_oga,
+    obtener_fecha_mas_reciente,
+    clasificar_transporte,
+    meta_dinamica,
+)
+
+st.set_page_config(
+    page_title="Reporteador Maestro — Ocampo GA",
+    page_icon="📊",
+    layout="wide",
+    initial_sidebar_state="collapsed",
+)
+
+if "vista" not in st.session_state:
+    st.session_state.vista = "inicio"
+
+
+def ir_a(vista):
+    st.session_state.vista = vista
+
+
+# ══════════════════════════════════════════════════════════════════════
+# VISTA: INICIO
+# ══════════════════════════════════════════════════════════════════════
+def vista_inicio():
+    st.markdown("""
+    <style>
+    #MainMenu, footer, header { visibility: hidden; }
+    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
+    .rm-card {
+        background: #1E2761;
+        border: 1px solid rgba(202, 220, 252, 0.12);
+        border-radius: 14px;
+        padding: 28px 24px 20px 24px;
+        transition: border-color 0.2s, transform 0.2s;
+        min-height: 190px;
+        display: flex; flex-direction: column; justify-content: space-between;
+    }
+    .rm-card:hover { border-color: rgba(202, 220, 252, 0.45); transform: translateY(-2px); }
+    .rm-card.disabled { opacity: 0.45; cursor: not-allowed; }
+    .rm-card-icon { font-size: 2.2rem; margin-bottom: 10px; }
+    .rm-card-title { color: #CADCFC; font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; }
+    .rm-card-desc { color: #8B9DB5; font-size: 0.85rem; line-height: 1.5; flex-grow: 1; }
+    .rm-badge { display: inline-block; border-radius: 20px; padding: 3px 11px; font-size: 0.72rem; margin-top: 14px; font-weight: 600; }
+    .rm-badge.live { background: rgba(34,197,94,0.15); color: #4ADE80; border: 1px solid rgba(34,197,94,0.3); }
+    .rm-badge.soon { background: rgba(202,220,252,0.08); color: #8B9DB5; border: 1px solid rgba(202,220,252,0.12); }
+    .rm-header { border-bottom: 1px solid rgba(202,220,252,0.12); padding-bottom: 20px; margin-bottom: 8px; }
+    .rm-title { font-size: 1.8rem; font-weight: 700; color: #CADCFC; margin: 0; }
+    .rm-subtitle { color: #8B9DB5; font-size: 0.9rem; margin-top: 4px; }
+    .rm-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid rgba(202,220,252,0.08); color: #4A5568; font-size: 0.78rem; text-align: center; }
+    </style>
+    """, unsafe_allow_html=True)
+
+    st.markdown("""
+    <div class="rm-header">
+        <p class="rm-title">📊 Reporteador Maestro</p>
+        <p class="rm-subtitle">Ocampo Grupo Aduanal · Área de Nuevas Tecnologías · Selecciona el reporte</p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    REPORTES = [
+        {"icon": "✅", "titulo": "Dashboard de Cumplimiento",
+         "desc": "Indicadores operativos y administrativos. Filtra por aduana, tipo de operación, cliente y rango de fechas.",
+         "live": True, "vista": "cumplimiento", "btn": "Ver Dashboard"},
+        {"icon": "📋", "titulo": "Sábana de Pedimentos",
+         "desc": "Ciclo completo de referencias: ejecutivo, estatus, honorarios, selecciones y observaciones.",
+         "live": True, "vista": "sabana", "btn": "Ver Sábana"},
+        {"icon": "📈", "titulo": "Score Card",
+         "desc": "KPIs por ejecutivo: cumplimiento de calidad, días promedio y saldo pendiente.",
+         "live": True, "vista": "scorecard", "btn": "Ver Score Card"},
+        {"icon": "📁", "titulo": "Mis Reportes",
+         "desc": "Reportes personalizados guardados. Crea y versiona vistas con tus filtros y columnas preferidas.",
+         "live": True, "vista": "mis_reportes", "btn": "Ver Mis Reportes"},
+        {"icon": "💰", "titulo": "Reporte Financiero",
+         "desc": "Facturación, pagos y cobranza por cliente y periodo.", "live": False},
+        {"icon": "🏢", "titulo": "Reporte por Cliente",
+         "desc": "Análisis detallado de cumplimiento y volumen por cliente.", "live": False},
+        {"icon": "⚙️", "titulo": "Configuración",
+         "desc": "Parámetros del sistema, gestión de usuarios y preferencias.", "live": False},
+    ]
+
+    cols = st.columns(3)
+    for i, r in enumerate(REPORTES):
+        with cols[i % 3]:
+            badge = '<span class="rm-badge live">● En vivo</span>' if r["live"] else '<span class="rm-badge soon">Próximamente</span>'
+            st.markdown(f"""
+            <div class="rm-card {'disabled' if not r['live'] else ''}">
+                <div>
+                    <div class="rm-card-icon">{r['icon']}</div>
+                    <div class="rm-card-title">{r['titulo']}</div>
+                    <div class="rm-card-desc">{r['desc']}</div>
+                </div>
+                {badge}
+            </div>
+            """, unsafe_allow_html=True)
+            if r["live"]:
+                st.button(f"📊 {r['btn']}", key=f"btn_{i}", on_click=ir_a, args=(r["vista"],), use_container_width=True)
+            else:
+                st.button("Próximamente", key=f"btn_{i}", disabled=True, use_container_width=True)
+
+    st.markdown("""
+    <div class="rm-footer">
+        Fuente: data mart PostgreSQL · ETL desde SIRADMIN cada 90 seg ·
+        Reporteador Maestro v0.1 · Nuevas Tecnologías
+    </div>
+    """, unsafe_allow_html=True)
+
+
+# ══════════════════════════════════════════════════════════════════════
+# VISTA: CUMPLIMIENTO
+# ══════════════════════════════════════════════════════════════════════
+def vista_cumplimiento():
+    st.sidebar.button("← Volver al menú", on_click=ir_a, args=("inicio",))
+    st.title("Dashboard de Cumplimiento")
+    st.caption("Fuente: data mart PostgreSQL (ETL desde SIRADMIN)")
+    st.sidebar.header("Filtros")
+
+    hoy = date.today()
+    primer_dia_mes = hoy.replace(day=1)
+    col_f1, col_f2 = st.sidebar.columns(2)
+    with col_f1:
+        fecha_inicio = st.date_input("Desde", value=primer_dia_mes, key="cum_f1")
+    with col_f2:
+        fecha_fin = st.date_input("Hasta", value=hoy, key="cum_f2")
+
+    tipo_reporte = st.sidebar.selectbox(
+        "Tipo de reporte", ["Reporte Operativo", "Reporte Administrativo"], key="cum_tr")
+    tipo_operacion = st.sidebar.selectbox(
+        "Tipo de operación", ["Todos", "Importación", "Exportación"], key="cum_to")
+    cliente_filtro = st.sidebar.text_input("Cliente (contiene)", "", key="cum_cli")
+
+    @st.cache_data(ttl=120)
+    def cargar_cumplimiento(f_ini, f_fin):
+        return query_pg(f"""
+            SELECT * FROM cumplimiento_pedimentos
+            WHERE pedimento_fecha_pago >= '{f_ini}' AND pedimento_fecha_pago <= '{f_fin}'
+        """)
+
+    df = cargar_cumplimiento(fecha_inicio, fecha_fin)
+    if df.empty:
+        st.warning("Sin datos para el rango seleccionado.")
+        return
+
+    df["patente_aduana"] = df.apply(
+        lambda r: f"{r['patente']} | {r['aduana']}"
+        if pd.notna(r["patente"]) and pd.notna(r["aduana"]) else "SIN PATENTE", axis=1)
+
+    opciones_patente = ["TODAS"] + sorted(df["patente_aduana"].unique().tolist())
+    patentes_sel = st.sidebar.multiselect("Patente / Aduana", opciones_patente, default=["TODAS"], key="cum_pat")
+
+    if tipo_operacion == "Importación":
+        df = df[df["tipo_operacion"] == "I"]
+    elif tipo_operacion == "Exportación":
+        df = df[df["tipo_operacion"] == "E"]
+    if patentes_sel and "TODAS" not in patentes_sel:
+        df = df[df["patente_aduana"].isin(patentes_sel)]
+    if cliente_filtro.strip():
+        df = df[df["cliente"].str.contains(cliente_filtro, case=False, na=False)]
+    if df.empty:
+        st.warning("Sin datos después de aplicar filtros.")
+        return
+
+    for col in ["fecha_revalidacion", "fecha_arribo", "fecha_pago",
+                 "pedimento_fecha_pago", "fecha_cuenta_gastos", "fecha_contabilidad"]:
+        if col in df.columns:
+            df[col] = pd.to_datetime(df[col], errors="coerce")
+
+    df["transporte_real"] = df.apply(
+        lambda r: clasificar_transporte(r["medio_transporte"], r["contenedores"], r["tipo_contenedor"]), axis=1)
+
+    if tipo_reporte == "Reporte Operativo":
+        df["param_fecha_inicio"] = df.apply(
+            lambda r: obtener_fecha_mas_reciente(r["fecha_revalidacion"], r["fecha_arribo"]), axis=1)
+        df["param_fecha_fin"] = df["fecha_pago"]
+    else:
+        df["param_fecha_inicio"] = df["fecha_contabilidad"]
+        df["param_fecha_fin"] = df["fecha_cuenta_gastos"]
+
+    df["dias_transcurridos"] = df.apply(
+        lambda r: dias_habiles_oga(r["param_fecha_inicio"], r["param_fecha_fin"]), axis=1)
+    df["meta_aplicada"] = df.apply(
+        lambda r: meta_dinamica(
+            {"Transporte_Real": r["transporte_real"], "Tipo Operación": r["tipo_operacion"]},
+            tipo_reporte), axis=1)
+
+    df = df.dropna(subset=["dias_transcurridos"])
+    df["dias_transcurridos"] = df["dias_transcurridos"].astype(int)
+    df["cumple"] = df.apply(
+        lambda r: "SI CUMPLE" if r["dias_transcurridos"] <= r["meta_aplicada"] else "NO CUMPLE", axis=1)
+
+    total = len(df)
+    cumplidos = len(df[df["cumple"] == "SI CUMPLE"])
+    pct = round(cumplidos * 100 / total, 1) if total > 0 else 0
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total pedimentos", f"{total:,}")
+    c2.metric("Cumplidos", f"{cumplidos:,}")
+    c3.metric("% Cumplimiento", f"{pct}%")
+
+    st.subheader(f"Detalle — {tipo_reporte}")
+    df_display = df[["pedimento", "pedimento_fecha_pago", "aduana", "tipo_operacion",
+                      "cliente", "transporte_real", "dias_transcurridos", "meta_aplicada", "cumple"]].copy()
+    df_display.columns = ["Pedimento", "Fecha Pago", "Aduana", "Tipo Op",
+                           "Cliente", "Transporte", "Días", "Meta", "Cumplimiento"]
+    df_display = df_display.sort_values("Fecha Pago", ascending=False)
+
+    def color_cumple(val):
+        if val == "SI CUMPLE":
+            return "background-color: #d4edda; color: #155724"
+        return "background-color: #f8d7da; color: #721c24"
+
+    st.dataframe(df_display.style.map(color_cumple, subset=["Cumplimiento"]),
+                 use_container_width=True, height=600)
+    st.caption(f"Mostrando {len(df_display):,} pedimentos | Rango: {fecha_inicio} → {fecha_fin} | Reporte: {tipo_reporte}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# VISTA: SÁBANA DE PEDIMENTOS
+# ══════════════════════════════════════════════════════════════════════
+def vista_sabana():
+    st.sidebar.button("← Volver al menú", on_click=ir_a, args=("inicio",))
+    st.title("Sábana de Pedimentos")
+    st.caption("Fuente: data mart PostgreSQL (ETL desde SIRADMIN)")
+    st.sidebar.header("Filtros")
+
+    hoy = date.today()
+    primer_dia_mes = hoy.replace(day=1)
+    col_f1, col_f2 = st.sidebar.columns(2)
+    with col_f1:
+        fecha_inicio = st.date_input("Desde", value=primer_dia_mes, key="sab_f1")
+    with col_f2:
+        fecha_fin = st.date_input("Hasta", value=hoy, key="sab_f2")
+
+    @st.cache_data(ttl=120)
+    def cargar_sabana(f_ini, f_fin):
+        return query_pg(f"""
+            SELECT referencia, fecha_apertura, fecha_pago, ejecutivo, cliente,
+                   aduana_despacho, tipo_operacion, status_referencia,
+                   honorarios, total_cga, primera_seleccion, segunda_seleccion,
+                   valor_aduana, cantidad_facturas, cantidad_partidas,
+                   fracciones, observaciones
+            FROM sabana_pedimentos
+            WHERE fecha_pago >= '{f_ini}' AND fecha_pago <= '{f_fin}'
+            ORDER BY fecha_pago DESC
+        """)
+
+    df = cargar_sabana(fecha_inicio, fecha_fin)
+    if df.empty:
+        st.warning("Sin datos para el rango seleccionado.")
+        return
+
+    ejecutivos = ["Todos"] + sorted(df["ejecutivo"].dropna().unique().tolist())
+    ejecutivo_sel = st.sidebar.selectbox("Ejecutivo", ejecutivos, key="sab_ej")
+
+    cliente_filtro = st.sidebar.text_input("Cliente (contiene)", "", key="sab_cli")
+
+    aduanas = ["TODAS"] + sorted(df["aduana_despacho"].dropna().unique().tolist())
+    aduanas_sel = st.sidebar.multiselect("Aduana", aduanas, default=["TODAS"], key="sab_adu")
+
+    tipo_op = st.sidebar.selectbox("Tipo de operación", ["Todos", "Importación", "Exportación"], key="sab_to")
+
+    status_opciones = sorted(df["status_referencia"].dropna().unique().tolist())
+    status_opciones = [s for s in status_opciones if s.strip()]
+    status_sel = st.sidebar.multiselect("Status", status_opciones, default=[], key="sab_st")
+
+    if st.sidebar.button("Limpiar filtros", key="sab_limpiar"):
+        st.rerun()
+
+    if ejecutivo_sel != "Todos":
+        df = df[df["ejecutivo"] == ejecutivo_sel]
+    if cliente_filtro.strip():
+        df = df[df["cliente"].str.contains(cliente_filtro, case=False, na=False)]
+    if aduanas_sel and "TODAS" not in aduanas_sel:
+        df = df[df["aduana_despacho"].isin(aduanas_sel)]
+    if tipo_op == "Importación":
+        df = df[df["tipo_operacion"] == "I"]
+    elif tipo_op == "Exportación":
+        df = df[df["tipo_operacion"] == "E"]
+    if status_sel:
+        df = df[df["status_referencia"].isin(status_sel)]
+
+    if df.empty:
+        st.warning("Sin datos después de aplicar filtros.")
+        return
+
+    total_refs = len(df)
+    total_honorarios = df["honorarios"].sum() or 0
+    total_valor_aduana = df["valor_aduana"].sum() or 0
+    verdes = len(df[df["primera_seleccion"].str.lower().str.strip() == "verde"]) if "primera_seleccion" in df.columns else 0
+    pct_verde = round(verdes * 100 / total_refs, 1) if total_refs > 0 else 0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total referencias", f"{total_refs:,}")
+    c2.metric("Honorarios MXN", f"${total_honorarios:,.0f}")
+    c3.metric("Valor aduana USD", f"${total_valor_aduana:,.0f}")
+    c4.metric("% Verde (1a sel.)", f"{pct_verde}%")
+
+    st.subheader("Detalle de referencias")
+
+    cols_tabla = ["referencia", "fecha_apertura", "fecha_pago", "ejecutivo", "cliente",
+                  "aduana_despacho", "tipo_operacion", "status_referencia",
+                  "honorarios", "total_cga", "primera_seleccion", "segunda_seleccion",
+                  "valor_aduana", "cantidad_facturas", "cantidad_partidas", "fracciones"]
+    df_show = df[[c for c in cols_tabla if c in df.columns]].copy()
+    df_show.columns = ["Referencia", "F. Apertura", "F. Pago", "Ejecutivo", "Cliente",
+                        "Aduana", "Tipo Op", "Status",
+                        "Honorarios", "Total CGA", "1a Selección", "2a Selección",
+                        "Valor Aduana", "Facturas", "Partidas", "Fracciones"]
+
+    def color_status(val):
+        if not isinstance(val, str):
+            return ""
+        v = val.upper()
+        if "CERRAD" in v or "PAGAD" in v:
+            return "background-color: #d4edda; color: #155724"
+        if "CANCEL" in v:
+            return "background-color: #f8d7da; color: #721c24"
+        if "ELABOR" in v or "ESPERA" in v:
+            return "background-color: #fff3cd; color: #856404"
+        return "background-color: #e2e3e5; color: #383d41"
+
+    st.dataframe(df_show.style.map(color_status, subset=["Status"]),
+                 use_container_width=True, height=600)
+
+    with st.expander(f"Ver observaciones ({len(df[df['observaciones'].notna()]):,} registros con notas)"):
+        df_obs = df[df["observaciones"].notna() & (df["observaciones"].str.strip() != "")]
+        if df_obs.empty:
+            st.info("Sin observaciones en los registros filtrados.")
+        else:
+            for _, row in df_obs[["referencia", "observaciones"]].iterrows():
+                st.markdown(f"**{row['referencia']}:** {row['observaciones'][:500]}")
+
+    st.caption(f"Mostrando {total_refs:,} referencias | Rango: {fecha_inicio} → {fecha_fin}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# VISTA: SCORE CARD
+# ══════════════════════════════════════════════════════════════════════
+def vista_scorecard():
+    st.sidebar.button("← Volver al menú", on_click=ir_a, args=("inicio",))
+    st.title("Score Card — KPIs por Ejecutivo")
+    st.caption("Fuente: data mart PostgreSQL (ETL desde SIRADMIN)")
+    st.sidebar.header("Filtros")
+
+    anio = st.sidebar.selectbox("Año", [2026, 2025], key="sc_anio")
+
+    @st.cache_data(ttl=120)
+    def cargar_scorecard(anio_sel):
+        return query_pg(f"""
+            SELECT * FROM scorecard_referencias
+            WHERE EXTRACT(YEAR FROM fecha_apertura) = {anio_sel}
+        """)
+
+    df = cargar_scorecard(anio)
+    if df.empty:
+        st.warning("Sin datos para el año seleccionado.")
+        return
+
+    ejecutivos = ["Todos"] + sorted(df["ejecutivo"].dropna().unique().tolist())
+    ejecutivo_sel = st.sidebar.selectbox("Ejecutivo", ejecutivos, key="sc_ej")
+
+    status_opciones = sorted(df["status_desc"].dropna().unique().tolist())
+    status_sel = st.sidebar.multiselect("Status", status_opciones, default=[], key="sc_st")
+
+    solo_despachados = st.sidebar.checkbox("Solo despachados", key="sc_desp")
+
+    if ejecutivo_sel != "Todos":
+        df = df[df["ejecutivo"] == ejecutivo_sel]
+    if status_sel:
+        df = df[df["status_desc"].isin(status_sel)]
+    if solo_despachados:
+        df = df[df["despachado"] == True]
+
+    if df.empty:
+        st.warning("Sin datos después de aplicar filtros.")
+        return
+
+    total_refs = len(df)
+    despachadas = int(df["despachado"].sum())
+    pct_despacho = round(despachadas * 100 / total_refs, 1) if total_refs > 0 else 0
+    con_primera_sel = int(df["fecha_prim_sel"].notna().sum())
+    saldo_total = df["saldo"].sum() or 0
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total referencias", f"{total_refs:,}")
+    c2.metric("% Despachadas", f"{pct_despacho}%",
+              delta=f"{despachadas:,} de {total_refs:,}")
+    c3.metric("Con 1a selección", f"{con_primera_sel:,}")
+    c4.metric("Saldo pendiente", f"${saldo_total:,.0f}")
+
+    st.subheader("Resumen por ejecutivo")
+
+    resumen = df.groupby("ejecutivo", dropna=False).agg(
+        total_referencias=("referencia", "count"),
+        despachadas=("despachado", "sum"),
+        con_primera_sel=("fecha_prim_sel", lambda x: x.notna().sum()),
+        con_segunda_sel=("fecha_seg_sel", lambda x: x.notna().sum()),
+        honorarios=("honorarios", "sum"),
+        saldo=("saldo", "sum"),
+    ).reset_index()
+
+    # Días promedio: solo referencias con dias_calidad_despacho > 0
+    df_con_dias = df[pd.to_numeric(df.get("dias_calidad_despacho", pd.Series()), errors="coerce").fillna(0) > 0]
+    if not df_con_dias.empty:
+        dias_por_ej = (
+            df_con_dias.groupby("ejecutivo")["dias_calidad_despacho"]
+            .mean().round(1).rename("dias_prom_despacho")
+        )
+        resumen = resumen.merge(dias_por_ej, on="ejecutivo", how="left")
+    else:
+        resumen["dias_prom_despacho"] = None
+
+    resumen["pct_despacho"] = resumen.apply(
+        lambda r: round(r["despachadas"] / r["total_referencias"] * 100, 1)
+        if r["total_referencias"] > 0 else 0.0,
+        axis=1
+    )
+
+    df_resumen = resumen[["ejecutivo", "total_referencias", "despachadas", "pct_despacho",
+                           "con_primera_sel", "con_segunda_sel",
+                           "dias_prom_despacho", "honorarios", "saldo"]].copy()
+    df_resumen.columns = ["Ejecutivo", "Total", "Despachadas", "% Desp.",
+                           "1a Sel.", "2a Sel.", "Días Prom.",
+                           "Honorarios", "Saldo"]
+    df_resumen = df_resumen.sort_values("Total", ascending=False)
+    df_resumen["Ejecutivo"] = df_resumen["Ejecutivo"].fillna("SIN ASIGNAR")
+
+    def color_pct(val):
+        try:
+            v = float(val)
+        except (ValueError, TypeError):
+            return ""
+        if v >= 90:
+            return "background-color: #d4edda; color: #155724"
+        if v >= 75:
+            return "background-color: #fff3cd; color: #856404"
+        return "background-color: #f8d7da; color: #721c24"
+
+    st.dataframe(
+        df_resumen.style
+            .map(color_pct, subset=["% Desp."])
+            .format({"Honorarios": "${:,.0f}", "Saldo": "${:,.0f}"}),
+        use_container_width=True, height=500)
+
+    if ejecutivo_sel != "Todos":
+        st.subheader(f"Detalle — {ejecutivo_sel}")
+        cols_det = ["referencia", "fecha_apertura", "status_desc",
+                    "despachado", "fecha_despacho",
+                    "fecha_prim_sel", "fecha_seg_sel",
+                    "honorarios", "saldo", "observaciones"]
+        df_det = df[[c for c in cols_det if c in df.columns]].copy()
+        df_det.columns = ["Referencia", "F. Apertura", "Status",
+                           "Despachado", "F. Despacho",
+                           "F. 1a Sel.", "F. 2a Sel.",
+                           "Honorarios", "Saldo", "Observaciones"]
+        df_det = df_det.sort_values("F. Apertura", ascending=False)
+        st.dataframe(df_det, use_container_width=True, height=400)
+
+    st.caption(f"Mostrando {total_refs:,} referencias | Año: {anio}")
+
+
+# ══════════════════════════════════════════════════════════════════════
+# ROUTER
+# ══════════════════════════════════════════════════════════════════════
+vista = st.session_state.vista
+if vista == "cumplimiento":
+    vista_cumplimiento()
+elif vista == "sabana":
+    vista_sabana()
+elif vista == "scorecard":
+    vista_scorecard()
+elif vista == "mis_reportes":
+    from src.canales.streamlit.mis_reportes import render_mis_reportes
+    render_mis_reportes()
+else:
+    vista_inicio()

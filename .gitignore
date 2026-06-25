@@ -1,0 +1,31 @@
+# Credenciales — nunca al repo
+.env
+*.env
+
+# Entorno virtual
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Logs — generados en runtime
+logs/*.log
+logs/*.txt
+
+# Packaging
+*.egg-info/
+dist/
+build/
+
+# Tests
+.pytest_cache/
+
+# Diccionario SIRADMIN — contiene info interna
+docs/diccionario_siradmin.md
+
+# IDE
+.vscode/
+.idea/

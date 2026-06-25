@@ -1,0 +1,12 @@
+[theme]
+base = "dark"
+primaryColor = "#CADCFC"
+backgroundColor = "#0D1117"
+secondaryBackgroundColor = "#1E2761"
+textColor = "#E8E6E0"
+font = "sans serif"
+
+[server]
+address = "0.0.0.0"
+port = 8503
+baseUrlPath = "reporteador"
