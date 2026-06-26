@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import sys
 import os
+import io
 from datetime import datetime, date
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
@@ -81,6 +82,9 @@ def vista_inicio():
         {"icon": "📁", "titulo": "Mis Reportes",
          "desc": "Reportes personalizados guardados. Crea y versiona vistas con tus filtros y columnas preferidas.",
          "live": True, "vista": "mis_reportes", "btn": "Ver Mis Reportes"},
+        {"icon": "🎯", "titulo": "Score Card v1",
+         "desc": "Seguimiento operativo por etapa: En Tráfico, Administrativo y Cierre. Días de aging y exportación.",
+         "live": True, "vista": "scorecard_v1", "btn": "Ver Score Card v1"},
         {"icon": "💰", "titulo": "Reporte Financiero",
          "desc": "Facturación, pagos y cobranza por cliente y periodo.", "live": False},
         {"icon": "🏢", "titulo": "Reporte por Cliente",
@@ -470,6 +474,350 @@ def vista_scorecard():
 
 
 # ══════════════════════════════════════════════════════════════════════
+# VISTA: SCORE CARD V1
+# ══════════════════════════════════════════════════════════════════════
+def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
+    """Genera PDF con resumen por etapa y tabla de detalle (sin OTRO)."""
+    from fpdf import FPDF
+
+    class PDF(FPDF):
+        def header(self):
+            self.set_font("Helvetica", "B", 13)
+            self.cell(0, 9, "Score Card v1 - Ocampo Grupo Aduanal", align="C",
+                      new_x="LMARGIN", new_y="NEXT")
+            self.set_font("Helvetica", "", 8)
+            # Eliminar caracteres no-latin del filtros_desc para compatibilidad
+            fd_safe = filtros_desc.encode("latin-1", errors="replace").decode("latin-1")
+            self.cell(0, 5, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  {fd_safe}",
+                      align="C", new_x="LMARGIN", new_y="NEXT")
+            self.ln(2)
+
+        def footer(self):
+            self.set_y(-13)
+            self.set_font("Helvetica", "I", 7)
+            self.cell(0, 8, f"Pág. {self.page_no()} — Reporteador Maestro · Nuevas Tecnologías", align="C")
+
+    pdf = PDF(orientation="L", unit="mm", format="A4")
+    pdf.add_page()
+
+    COLORES_ETAPA = {
+        "EN TRAFICO":     (74, 144, 226),
+        "ADMINISTRATIVO": (232, 168, 56),
+        "CIERRE":         (39, 174, 96),
+        "OTRO":           (127, 140, 141),
+    }
+
+    # ── Resumen por etapa ──
+    pdf.set_font("Helvetica", "B", 10)
+    pdf.cell(0, 7, "Resumen por Etapa de Operación", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_fill_color(40, 44, 52)
+
+    col_w = [55, 30, 30]
+    headers_res = ["Etapa", "Refs.", "% del Total"]
+    pdf.set_font("Helvetica", "B", 8)
+    for h, w in zip(headers_res, col_w):
+        pdf.cell(w, 6, h, border=1, fill=True, align="C")
+    pdf.ln()
+
+    pdf.set_font("Helvetica", "", 8)
+    for etapa, cnt in etapa_map.items():
+        pct = round(cnt * 100 / (total_general or 1), 1)
+        r, g, b = COLORES_ETAPA.get(etapa, (100, 100, 100))
+        pdf.set_text_color(r, g, b)
+        pdf.cell(55, 6, f"  {etapa}", border=1)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(30, 6, f"{cnt:,}", border=1, align="C")
+        pdf.cell(30, 6, f"{pct}%", border=1, align="C")
+        pdf.ln()
+
+    pdf.set_text_color(0, 0, 0)
+    pdf.ln(4)
+
+    # ── Tabla de detalle (excluye OTRO) ──
+    df_act = df_det[df_det["etapa_operacion"] != "OTRO"].copy()
+    if df_act.empty:
+        pdf.set_font("Helvetica", "I", 9)
+        pdf.cell(0, 7, "Sin registros activos (EN TRAFICO / ADMINISTRATIVO / CIERRE) con los filtros actuales.",
+                 new_x="LMARGIN", new_y="NEXT")
+    else:
+        COLS = [
+            ("Referencia", 30), ("Cliente", 52), ("Etapa", 26),
+            ("F. Pago", 20), ("F. Contab.", 20), ("F. Cierre", 20),
+            ("TRF", 10), ("ADM", 10), ("CGA", 10),
+            ("Ejecutivo", 40),
+        ]
+        pdf.set_font("Helvetica", "B", 7)
+        pdf.set_fill_color(30, 39, 97)
+        pdf.set_text_color(202, 220, 252)
+        for label, w in COLS:
+            pdf.cell(w, 6, label, border=1, fill=True, align="C")
+        pdf.ln()
+        pdf.set_text_color(0, 0, 0)
+
+        def _s(v, n=99):
+            """Trunca y convierte a latin-1 para fpdf2."""
+            t = str(v or "")[:n]
+            return t.encode("latin-1", errors="replace").decode("latin-1")
+
+        pdf.set_font("Helvetica", "", 6.5)
+        for _, row in df_act.iterrows():
+            etapa = str(row.get("etapa_operacion", ""))
+            r, g, b = COLORES_ETAPA.get(etapa, (0, 0, 0))
+            vals = [
+                (_s(row.get("referencia", ""), 18), 30, "L"),
+                (_s(row.get("cliente", ""), 34), 52, "L"),
+                (_s(etapa), 26, "C"),
+                (_s(row.get("fecha_pago", ""), 10), 20, "C"),
+                (_s(row.get("f_e_contabilidad", ""), 10), 20, "C"),
+                (_s(row.get("fecha_cierre_adm", ""), 10), 20, "C"),
+                (str(int(row.get("dias_trf", 0) or 0)), 10, "C"),
+                (str(int(row.get("dias_adm", 0) or 0)), 10, "C"),
+                (str(int(row.get("dias_cga", 0) or 0)), 10, "C"),
+                (_s(row.get("ejecutivo", ""), 26), 40, "L"),
+            ]
+            for i, (txt, w, align) in enumerate(vals):
+                if i == 2:
+                    pdf.set_text_color(r, g, b)
+                else:
+                    pdf.set_text_color(0, 0, 0)
+                pdf.cell(w, 5.5, txt, border=1, align=align)
+            pdf.ln()
+
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font("Helvetica", "I", 7)
+        pdf.cell(0, 5, f"Total registros activos: {len(df_act):,}  (OTRO excluido del detalle)",
+                 new_x="LMARGIN", new_y="NEXT")
+
+    buf = io.BytesIO()
+    pdf.output(buf)
+    return buf.getvalue()
+
+
+def vista_scorecard_v1():
+    st.sidebar.button("← Volver al menú", on_click=ir_a, args=("inicio",))
+    st.sidebar.header("Balanced Score Card")
+
+    # ── Filtros ──
+    @st.cache_data(ttl=300)
+    def _sucursales():
+        df = query_pg("SELECT DISTINCT sucursal FROM scorecard_v1 WHERE sucursal IS NOT NULL ORDER BY sucursal")
+        return df["sucursal"].tolist() if not df.empty else []
+
+    opciones_suc = ["TODAS"] + _sucursales()
+    sucursales_sel = st.sidebar.multiselect("Sucursal", opciones_suc, default=["TODAS"], key="scv1_suc")
+
+    ETAPAS = ["EN TRAFICO", "ADMINISTRATIVO", "CIERRE", "OTRO"]
+    etapas_sel = st.sidebar.multiselect("Etapa de operación", ETAPAS, default=ETAPAS, key="scv1_etapa")
+
+    solo_proforma = st.sidebar.checkbox("Solo referencias con proforma", value=False, key="scv1_prof")
+
+    # ── WHERE dinámico ──
+    conds = []
+    if sucursales_sel and "TODAS" not in sucursales_sel:
+        s = ", ".join([f"'{x}'" for x in sucursales_sel])
+        conds.append(f"sucursal IN ({s})")
+    if etapas_sel and len(etapas_sel) < len(ETAPAS):
+        s = ", ".join([f"'{x}'" for x in etapas_sel])
+        conds.append(f"etapa_operacion IN ({s})")
+    if solo_proforma:
+        conds.append("tiene_proforma = TRUE")
+    where = ("WHERE " + " AND ".join(conds)) if conds else ""
+
+    filtros_desc = (
+        ("Suc: " + ", ".join(sucursales_sel) if "TODAS" not in sucursales_sel else "Todas sucursales")
+        + " | " + ", ".join(etapas_sel)
+        + (" | Con proforma" if solo_proforma else "")
+    )
+
+    # ── Dashboard de porcentajes ──
+    @st.cache_data(ttl=120)
+    def _etapas(w):
+        return query_pg(
+            f"SELECT etapa_operacion, COUNT(*) AS total FROM scorecard_v1 {w} GROUP BY etapa_operacion"
+        )
+
+    df_et = _etapas(where)
+    etapa_map = {"EN TRAFICO": 0, "ADMINISTRATIVO": 0, "CIERRE": 0, "OTRO": 0}
+    if not df_et.empty:
+        for _, row in df_et.iterrows():
+            k = row["etapa_operacion"] if row["etapa_operacion"] in etapa_map else "OTRO"
+            etapa_map[k] += int(row["total"])
+    total_general = sum(etapa_map.values()) or 1
+
+    COLORES = {
+        "EN TRAFICO":     "#4A90E2",
+        "ADMINISTRATIVO": "#E8A838",
+        "CIERRE":         "#27AE60",
+        "OTRO":           "#7F8C8D",
+    }
+
+    st.title("Score Card — Seguimiento Operativo")
+    st.caption("Fuente: data mart PostgreSQL · ETL desde [SIRADMIN].[dbo].[vw_sc_operacion_base]")
+
+    c1, c2, c3, c4 = st.columns(4)
+    for col, etapa in zip([c1, c2, c3, c4], COLORES):
+        cnt = etapa_map[etapa]
+        pct = round(cnt * 100 / total_general, 1)
+        col.metric(etapa.title(), f"{cnt:,}", delta=f"{pct}%")
+
+    segs = []
+    for etapa, color in COLORES.items():
+        pct = etapa_map[etapa] * 100 / total_general
+        if pct > 0:
+            segs.append(
+                f'<div style="flex:{pct:.2f};background:{color};height:16px;border-radius:2px;margin-right:2px;" '
+                f'title="{etapa}: {pct:.1f}%"></div>'
+            )
+    leyenda = " ".join(
+        f'<span style="color:{c}">■ {e.title()}</span>'
+        for e, c in COLORES.items()
+    )
+    st.markdown(
+        f'<div style="display:flex;width:100%;margin:8px 0 2px 0;">{"".join(segs)}</div>'
+        f'<div style="display:flex;gap:18px;font-size:0.77rem;color:#8B9DB5;margin-bottom:14px;">{leyenda}</div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Tabla de detalle ──
+    @st.cache_data(ttl=120)
+    def _detalle(w):
+        return query_pg(f"""
+            SELECT
+                referencia, cliente, pedimento, sucursal, ejecutivo,
+                tipo_operacion, fecha_pago, fecha_prim_sel,
+                f_e_contabilidad, fecha_cierre_adm,
+                dias_trf, dias_adm, dias_cga,
+                etapa_operacion, tiene_proforma,
+                num_fac_cga, honorarios, resultado_sel_desc
+            FROM scorecard_v1
+            {w}
+            ORDER BY
+                CASE etapa_operacion
+                    WHEN 'EN TRAFICO'     THEN 1
+                    WHEN 'ADMINISTRATIVO' THEN 2
+                    WHEN 'CIERRE'         THEN 3
+                    ELSE 4
+                END,
+                dias_adm DESC
+        """)
+
+    df = _detalle(where)
+
+    if df.empty:
+        st.warning("Sin datos para los filtros seleccionados.")
+        return
+
+    st.subheader(f"Detalle — {len(df):,} referencias")
+
+    ESTILO_ETAPA = {
+        "EN TRAFICO":     "background-color:#0d1f35;color:#4A90E2",
+        "ADMINISTRATIVO": "background-color:#2e1d00;color:#E8A838",
+        "CIERRE":         "background-color:#061a0f;color:#27AE60",
+        "OTRO":           "background-color:#1a1a1a;color:#7F8C8D",
+    }
+
+    def _cel_etapa(val):
+        return ESTILO_ETAPA.get(val, "")
+
+    def _cel_adm(val):
+        try:
+            v = int(val)
+        except (TypeError, ValueError):
+            return ""
+        if v <= 7:
+            return "color:#27AE60"
+        if v <= 15:
+            return "color:#E8A838"
+        return "color:#E74C3C;font-weight:bold"
+
+    def _cel_cga(val):
+        try:
+            v = int(val)
+        except (TypeError, ValueError):
+            return ""
+        if v <= 3:
+            return "color:#27AE60"
+        if v <= 7:
+            return "color:#E8A838"
+        return "color:#E74C3C;font-weight:bold"
+
+    COLS_SHOW = [
+        "referencia", "cliente", "pedimento", "sucursal", "ejecutivo",
+        "tipo_operacion", "fecha_pago", "fecha_prim_sel",
+        "f_e_contabilidad", "fecha_cierre_adm",
+        "dias_trf", "dias_adm", "dias_cga",
+        "etapa_operacion", "tiene_proforma", "num_fac_cga", "honorarios",
+    ]
+    HEADERS = [
+        "Referencia", "Cliente", "Pedimento", "Sucursal", "Ejecutivo",
+        "Tipo Op", "F. Pago", "F. PrimSel",
+        "F. Contabilidad", "F. Cierre",
+        "TRF", "ADM", "CGA",
+        "Etapa", "Proforma", "Num. Fac", "Honorarios",
+    ]
+
+    df_show = df[[c for c in COLS_SHOW if c in df.columns]].copy()
+    df_show.columns = HEADERS[: len(df_show.columns)]
+    df_show["Honorarios"] = pd.to_numeric(df_show["Honorarios"], errors="coerce")
+
+    st.dataframe(
+        df_show.style
+            .map(_cel_etapa, subset=["Etapa"])
+            .map(_cel_adm,   subset=["ADM"])
+            .map(_cel_cga,   subset=["CGA"])
+            .format({"Honorarios": "${:,.0f}", "TRF": "{:.0f}", "ADM": "{:.0f}", "CGA": "{:.0f}"},
+                    na_rep="—"),
+        use_container_width=True,
+        height=600,
+    )
+
+    st.caption(
+        f"Leyenda días — ADM: verde ≤7d · naranja ≤15d · rojo >15d | "
+        f"CGA: verde ≤3d · naranja ≤7d · rojo >7d"
+    )
+
+    # ── Exportaciones ──
+    st.divider()
+    ex1, ex2 = st.columns(2)
+
+    with ex1:
+        buf_xl = io.BytesIO()
+        df_show.to_excel(buf_xl, index=False, engine="openpyxl")
+        buf_xl.seek(0)
+        st.download_button(
+            label="📥 Descargar Excel",
+            data=buf_xl,
+            file_name=f"scorecard_v1_{date.today().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+    with ex2:
+        @st.cache_data(ttl=120)
+        def _pdf(w, fd):
+            df_pdf = query_pg(f"""
+                SELECT referencia, cliente, ejecutivo, tipo_operacion,
+                       fecha_pago, f_e_contabilidad, fecha_cierre_adm,
+                       dias_trf, dias_adm, dias_cga, etapa_operacion
+                FROM scorecard_v1 {w}
+                ORDER BY CASE etapa_operacion
+                    WHEN 'EN TRAFICO' THEN 1 WHEN 'ADMINISTRATIVO' THEN 2
+                    WHEN 'CIERRE' THEN 3 ELSE 4 END, dias_adm DESC
+            """)
+            return _pdf_scorecard_v1(df_pdf, etapa_map, total_general, fd)
+
+        pdf_bytes = _pdf(where, filtros_desc)
+        st.download_button(
+            label="📄 Descargar PDF",
+            data=pdf_bytes,
+            file_name=f"scorecard_v1_{date.today().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+
+
+# ══════════════════════════════════════════════════════════════════════
 # ROUTER
 # ══════════════════════════════════════════════════════════════════════
 vista = st.session_state.vista
@@ -482,5 +830,7 @@ elif vista == "scorecard":
 elif vista == "mis_reportes":
     from src.canales.streamlit.mis_reportes import render_mis_reportes
     render_mis_reportes()
+elif vista == "scorecard_v1":
+    vista_scorecard_v1()
 else:
     vista_inicio()
