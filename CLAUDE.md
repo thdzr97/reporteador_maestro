@@ -77,8 +77,9 @@ Repo GitHub: https://github.com/thdzr97/reporteador_maestro (rama main protegida
   `[Clave Incoterm]`, `[Nombre País Vendedor/Comprador]` (con tilde),
   `[Nombre País Origen/Destino]` (con tilde), `[Fracciones]`,
   `[ObservacionesR]`, `[Pedimentos Pagados]`, `[Clave Pedimento]`
-- Columnas NO confirmadas en la vista (pueden no existir):
-  `[Sucursal]`, `[Promotor]`, `[Grupo]`, `[Pedimento Numero]`
+- Columnas adicionales confirmadas en exploración:
+  `[Tipo Operación Desc]` (con tilde, con " Desc"), `[Pedimento Numero]` (sí existe)
+- Columnas NO confirmadas aún: `[Sucursal]`, `[Promotor]`, `[Grupo]`
 
 **Admin.SIR_VT_Sabana_Pedimento_Admin** — variante administrativa
 
@@ -90,10 +91,10 @@ Repo GitHub: https://github.com/thdzr97/reporteador_maestro (rama main protegida
 
 **Admin.SIR_VT_OchentaVeinte** — análisis 80/20
 
-### Pendiente (vista del analista para sc_v1 — 26/06/2026 10am)
+### Vista del analista para sc_v1 — RESUELTA
 
-El analista administrativo proporcionará la vista/tabla que usa para el Score
-Card el 26/06/2026 a las 10am.
+Se usó [SIRADMIN].[dbo].[vw_sc_operacion_base] (46 cols).
+La ETL etl_scorecard_v1.py está validada y en producción desde 26/06/2026.
 
 ---
 
@@ -119,15 +120,22 @@ Card el 26/06/2026 a las 10am.
 - 307 despachadas (8.7%), 2,713 con primera selección (77%)
 
 ### scorecard_v1
-- ETL: etl_scorecard_v1.py | DELETE+reload | PENDIENTE de validación
-- Fuente: SIR_60_REFERENCIAS + SIR_67 + sábana + vt_proformas_epg
-- 3 etapas: EN_TRAFICO, ADMINISTRATIVO, CIERRE
-- Lógica días (verificada con PDF 25/06/2026):
-  - dias_trf = hábiles(fecha_pago → fec_selec_ale) si fechas distintas, else 0
-  - dias_adm = hábiles(fec_selec_ale → dEnvioContabilidad)
-  - dias_cga = hábiles(dEnvioContabilidad → dFechaCierreAdmin)
-  - Método: sin contar día inicio, sí día fin (L-V)
-- PENDIENTE: vista del analista para completar lógica de DIAS ADM
+- ETL: etl_scorecard_v1.py | DELETE+reload | 3,066 registros
+- Fuente: [SIRADMIN].[dbo].[vw_sc_operacion_base] + OUTER APPLY SIR_VT_Sabana_Pedimento
+- Dedup: ROW_NUMBER PARTITION BY Ref_prf ORDER BY FechaExtraccion DESC
+- 4 etapas: EN TRAFICO (109), ADMINISTRATIVO (105), CIERRE (819), OTRO (2,033)
+- Lógica días — VALIDADA contra PDF Ocampo GA 25/06/2026 (5/6 refs exactas):
+  - dias_trf = hábiles(FechaPago → FechaPrimeraSeleccion) si fechas distintas, else 0
+    Método: sin contar día inicio, sí día fin, L-V
+  - dias_adm = calendario(f_e_contabilidad → HOY)  ← aging, aumenta cada día
+    Es 0 si f_e_contabilidad IS NULL (EN TRAFICO sin contabilidad)
+  - dias_cga = calendario(FechaCierreAdmin → HOY)  ← aging, días desde cierre
+    Es 0 si FechaCierreAdmin IS NULL (aún abierto)
+- Columnas clave de vw_sc_operacion_base: folio (lowercase), num_fac (lowercase),
+  f_e_contabilidad, FechaPrimeraSeleccion, EtapaOperacion (pre-calculado),
+  nIdEjecutivo = SIEMPRE NULL (usar OUTER APPLY sábana para Ejecutivo)
+- Columnas sábana usadas: [Cliente], [Ejecutivo], [Tipo Operación Desc],
+  [Pedimento Numero], [Patente], [Pedimento Fecha Pago], [Honorarios]
 
 ### reportes_guardados
 - Sistema de versionado de reportes por usuario
@@ -169,7 +177,7 @@ Navegación: session_state (un solo app.py, sin pages/)
 4. Mis Reportes — lee reportes_guardados
 
 ### Reportes próximos:
-5. Score Card v1 — leerá scorecard_v1 (pendiente validación)
+5. Score Card v1 — leerá scorecard_v1 (ETL validado, UI pendiente)
 
 ---
 
@@ -204,7 +212,7 @@ ETLs en el loop:
 1. etl_incremental() — cumplimiento_pedimentos (últimos 7 días, UPSERT)
 2. run_etl_sabana(dias_atras=2) — sabana_pedimentos
 3. run_etl_scorecard() — scorecard_referencias
-4. run_etl_scorecard_v1() — pendiente de agregar cuando esté validado
+4. run_etl_scorecard_v1() — scorecard_v1 (DELETE+reload)
 
 ---
 

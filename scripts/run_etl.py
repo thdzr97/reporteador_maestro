@@ -16,6 +16,7 @@ load_dotenv()
 from src.etl.etl_cumplimiento import etl_incremental
 from src.etl.etl_sabana import run_etl_sabana
 from src.etl.etl_scorecard import run_etl_scorecard
+from src.etl.etl_scorecard_v1 import run_etl_scorecard_v1
 
 logging.basicConfig(
     level=logging.INFO,
@@ -46,5 +47,10 @@ while True:
         run_etl_scorecard()
     except Exception as e:
         logger.error(f"Error ETL scorecard: {e}")
+
+    try:
+        run_etl_scorecard_v1()
+    except Exception as e:
+        logger.error(f"Error ETL scorecard_v1: {e}")
 
     time.sleep(INTERVALO)
