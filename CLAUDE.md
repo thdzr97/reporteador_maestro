@@ -6,7 +6,7 @@
 Plataforma de reportes e inteligencia conversacional para datos de cumplimiento
 aduanal del SIR de Ocampo Grupo Aduanal.
 Líder técnico: Ing. Tona Hernández — Área de Nuevas Tecnologías.
-Repo GitHub: https://github.com/<tu-usuario>/reporteador_maestro (rama main protegida)
+Repo GitHub: https://github.com/thdzr97/reporteador_maestro (rama main protegida)
 
 ---
 
