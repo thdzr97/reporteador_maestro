@@ -477,27 +477,54 @@ def vista_scorecard():
 # VISTA: SCORE CARD V1
 # ══════════════════════════════════════════════════════════════════════
 def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
-    """Genera PDF con resumen por etapa y tabla de detalle (sin OTRO)."""
+    """Genera PDF con resumen por etapa y tabla de detalle (sin OTRO). Fuente DejaVu = UTF-8."""
     from fpdf import FPDF
+    import os, shutil
+
+    FONT_DIR = "/var/www/html/ocmx/reporteador-maestro/assets"
+    font_path = f"{FONT_DIR}/DejaVuSans.ttf"
+    font_bold = f"{FONT_DIR}/DejaVuSans-Bold.ttf"
+    os.makedirs(FONT_DIR, exist_ok=True)
+
+    SYS_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+    SYS_BOLD    = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
+    if not os.path.exists(font_path):
+        if os.path.exists(SYS_REGULAR):
+            shutil.copy2(SYS_REGULAR, font_path)
+        else:
+            import urllib.request
+            urllib.request.urlretrieve(
+                "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
+                font_path,
+            )
+    if not os.path.exists(font_bold):
+        if os.path.exists(SYS_BOLD):
+            shutil.copy2(SYS_BOLD, font_bold)
+        else:
+            import urllib.request
+            urllib.request.urlretrieve(
+                "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf",
+                font_bold,
+            )
 
     class PDF(FPDF):
         def header(self):
-            self.set_font("Helvetica", "B", 13)
-            self.cell(0, 9, "Score Card v1 - Ocampo Grupo Aduanal", align="C",
+            self.set_font("DejaVu", "B", 13)
+            self.cell(0, 9, "Score Card v1 — Ocampo Grupo Aduanal", align="C",
                       new_x="LMARGIN", new_y="NEXT")
-            self.set_font("Helvetica", "", 8)
-            # Eliminar caracteres no-latin del filtros_desc para compatibilidad
-            fd_safe = filtros_desc.encode("latin-1", errors="replace").decode("latin-1")
-            self.cell(0, 5, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  {fd_safe}",
+            self.set_font("DejaVu", "", 8)
+            self.cell(0, 5, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  {filtros_desc}",
                       align="C", new_x="LMARGIN", new_y="NEXT")
             self.ln(2)
 
         def footer(self):
             self.set_y(-13)
-            self.set_font("Helvetica", "I", 7)
+            self.set_font("DejaVu", "", 7)
             self.cell(0, 8, f"Pág. {self.page_no()} — Reporteador Maestro · Nuevas Tecnologías", align="C")
 
     pdf = PDF(orientation="L", unit="mm", format="A4")
+    pdf.add_font("DejaVu", "",  font_path)
+    pdf.add_font("DejaVu", "B", font_bold)
     pdf.add_page()
 
     COLORES_ETAPA = {
@@ -508,19 +535,17 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
     }
 
     # ── Resumen por etapa ──
-    pdf.set_font("Helvetica", "B", 10)
+    pdf.set_font("DejaVu", "B", 10)
     pdf.cell(0, 7, "Resumen por Etapa de Operación", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font("Helvetica", "", 9)
     pdf.set_fill_color(40, 44, 52)
 
     col_w = [55, 30, 30]
-    headers_res = ["Etapa", "Refs.", "% del Total"]
-    pdf.set_font("Helvetica", "B", 8)
-    for h, w in zip(headers_res, col_w):
+    pdf.set_font("DejaVu", "B", 8)
+    for h, w in zip(["Etapa", "Refs.", "% del Total"], col_w):
         pdf.cell(w, 6, h, border=1, fill=True, align="C")
     pdf.ln()
 
-    pdf.set_font("Helvetica", "", 8)
+    pdf.set_font("DejaVu", "", 8)
     for etapa, cnt in etapa_map.items():
         pct = round(cnt * 100 / (total_general or 1), 1)
         r, g, b = COLORES_ETAPA.get(etapa, (100, 100, 100))
@@ -537,8 +562,8 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
     # ── Tabla de detalle (excluye OTRO) ──
     df_act = df_det[df_det["etapa_operacion"] != "OTRO"].copy()
     if df_act.empty:
-        pdf.set_font("Helvetica", "I", 9)
-        pdf.cell(0, 7, "Sin registros activos (EN TRAFICO / ADMINISTRATIVO / CIERRE) con los filtros actuales.",
+        pdf.set_font("DejaVu", "", 9)
+        pdf.cell(0, 7, "Sin registros activos (EN TRAFICO / ADMINISTRATIVO / CIERRE).",
                  new_x="LMARGIN", new_y="NEXT")
     else:
         COLS = [
@@ -547,7 +572,7 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
             ("TRF", 10), ("ADM", 10), ("CGA", 10),
             ("Ejecutivo", 40),
         ]
-        pdf.set_font("Helvetica", "B", 7)
+        pdf.set_font("DejaVu", "B", 7)
         pdf.set_fill_color(30, 39, 97)
         pdf.set_text_color(202, 220, 252)
         for label, w in COLS:
@@ -555,37 +580,29 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
         pdf.ln()
         pdf.set_text_color(0, 0, 0)
 
-        def _s(v, n=99):
-            """Trunca y convierte a latin-1 para fpdf2."""
-            t = str(v or "")[:n]
-            return t.encode("latin-1", errors="replace").decode("latin-1")
-
-        pdf.set_font("Helvetica", "", 6.5)
+        pdf.set_font("DejaVu", "", 6.5)
         for _, row in df_act.iterrows():
             etapa = str(row.get("etapa_operacion", ""))
             r, g, b = COLORES_ETAPA.get(etapa, (0, 0, 0))
             vals = [
-                (_s(row.get("referencia", ""), 18), 30, "L"),
-                (_s(row.get("cliente", ""), 34), 52, "L"),
-                (_s(etapa), 26, "C"),
-                (_s(row.get("fecha_pago", ""), 10), 20, "C"),
-                (_s(row.get("f_e_contabilidad", ""), 10), 20, "C"),
-                (_s(row.get("fecha_cierre_adm", ""), 10), 20, "C"),
+                (str(row.get("referencia", "") or "")[:18], 30, "L"),
+                (str(row.get("cliente", "") or "")[:34], 52, "L"),
+                (etapa, 26, "C"),
+                (str(row.get("fecha_pago", "") or "")[:10], 20, "C"),
+                (str(row.get("f_e_contabilidad", "") or "")[:10], 20, "C"),
+                (str(row.get("fecha_cierre_adm", "") or "")[:10], 20, "C"),
                 (str(int(row.get("dias_trf", 0) or 0)), 10, "C"),
                 (str(int(row.get("dias_adm", 0) or 0)), 10, "C"),
                 (str(int(row.get("dias_cga", 0) or 0)), 10, "C"),
-                (_s(row.get("ejecutivo", ""), 26), 40, "L"),
+                (str(row.get("ejecutivo", "") or "")[:26], 40, "L"),
             ]
             for i, (txt, w, align) in enumerate(vals):
-                if i == 2:
-                    pdf.set_text_color(r, g, b)
-                else:
-                    pdf.set_text_color(0, 0, 0)
+                pdf.set_text_color(r, g, b) if i == 2 else pdf.set_text_color(0, 0, 0)
                 pdf.cell(w, 5.5, txt, border=1, align=align)
             pdf.ln()
 
         pdf.set_text_color(0, 0, 0)
-        pdf.set_font("Helvetica", "I", 7)
+        pdf.set_font("DejaVu", "", 7)
         pdf.cell(0, 5, f"Total registros activos: {len(df_act):,}  (OTRO excluido del detalle)",
                  new_x="LMARGIN", new_y="NEXT")
 
@@ -720,27 +737,25 @@ def vista_scorecard_v1():
     def _cel_etapa(val):
         return ESTILO_ETAPA.get(val, "")
 
-    def _cel_adm(val):
-        try:
-            v = int(val)
-        except (TypeError, ValueError):
+    def color_trf(val):
+        if not isinstance(val, (int, float)) or val == 0:
             return ""
-        if v <= 7:
-            return "color:#27AE60"
-        if v <= 15:
-            return "color:#E8A838"
-        return "color:#E74C3C;font-weight:bold"
+        if val <= 3:   return "background-color: #1a4a1a; color: #4ADE80"
+        if val <= 7:   return "background-color: #4a3800; color: #FCD34D"
+        return "background-color: #4a1515; color: #F87171"
 
-    def _cel_cga(val):
-        try:
-            v = int(val)
-        except (TypeError, ValueError):
+    def color_adm(val):
+        if not isinstance(val, (int, float)) or val == 0:
             return ""
-        if v <= 3:
-            return "color:#27AE60"
-        if v <= 7:
-            return "color:#E8A838"
-        return "color:#E74C3C;font-weight:bold"
+        if val <= 3:   return "background-color: #1a4a1a; color: #4ADE80"
+        if val <= 7:   return "background-color: #4a3800; color: #FCD34D"
+        return "background-color: #4a1515; color: #F87171"
+
+    def color_cga(val):
+        if not isinstance(val, (int, float)) or val == 0:
+            return ""
+        if val <= 5:   return "background-color: #1a4a1a; color: #4ADE80"
+        return "background-color: #4a1515; color: #F87171"
 
     COLS_SHOW = [
         "referencia", "cliente", "pedimento", "sucursal", "ejecutivo",
@@ -764,8 +779,9 @@ def vista_scorecard_v1():
     st.dataframe(
         df_show.style
             .map(_cel_etapa, subset=["Etapa"])
-            .map(_cel_adm,   subset=["ADM"])
-            .map(_cel_cga,   subset=["CGA"])
+            .map(color_trf,  subset=["TRF"])
+            .map(color_adm,  subset=["ADM"])
+            .map(color_cga,  subset=["CGA"])
             .format({"Honorarios": "${:,.0f}", "TRF": "{:.0f}", "ADM": "{:.0f}", "CGA": "{:.0f}"},
                     na_rep="—"),
         use_container_width=True,
@@ -773,8 +789,8 @@ def vista_scorecard_v1():
     )
 
     st.caption(
-        f"Leyenda días — ADM: verde ≤7d · naranja ≤15d · rojo >15d | "
-        f"CGA: verde ≤3d · naranja ≤7d · rojo >7d"
+        "Leyenda días — TRF/ADM: verde ≤3d · naranja ≤7d · rojo >7d | "
+        "CGA: verde ≤5d · rojo >5d"
     )
 
     # ── Exportaciones ──
