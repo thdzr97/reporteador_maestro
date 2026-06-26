@@ -477,7 +477,10 @@ def vista_scorecard():
 # VISTA: SCORE CARD V1
 # ══════════════════════════════════════════════════════════════════════
 def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
-    """Genera PDF con resumen por etapa y tabla de detalle (sin OTRO). Fuente DejaVu = UTF-8."""
+    """
+    PDF Balanced Scorecard — agrupado por sucursal y etapa, con saltos de página automáticos.
+    Columnas: Ref|Cliente|Pedimento|P|F.Pago|SelAle|F_E Cont|F.Cierre|TRF|ADM|CGA|Proform|Factura
+    """
     from fpdf import FPDF
     import os, shutil
 
@@ -485,126 +488,151 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
     font_path = f"{FONT_DIR}/DejaVuSans.ttf"
     font_bold = f"{FONT_DIR}/DejaVuSans-Bold.ttf"
     os.makedirs(FONT_DIR, exist_ok=True)
+    for dest, src in [
+        (font_path, "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
+        (font_bold, "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+    ]:
+        if not os.path.exists(dest) and os.path.exists(src):
+            shutil.copy2(src, dest)
 
-    SYS_REGULAR = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-    SYS_BOLD    = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-    if not os.path.exists(font_path):
-        if os.path.exists(SYS_REGULAR):
-            shutil.copy2(SYS_REGULAR, font_path)
-        else:
-            import urllib.request
-            urllib.request.urlretrieve(
-                "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans.ttf",
-                font_path,
-            )
-    if not os.path.exists(font_bold):
-        if os.path.exists(SYS_BOLD):
-            shutil.copy2(SYS_BOLD, font_bold)
-        else:
-            import urllib.request
-            urllib.request.urlretrieve(
-                "https://github.com/dejavu-fonts/dejavu-fonts/raw/master/ttf/DejaVuSans-Bold.ttf",
-                font_bold,
-            )
+    COLORES = {
+        "EN TRAFICO":     {"text": (74, 144, 226),  "fill": (13, 27, 60)},
+        "ADMINISTRATIVO": {"text": (232, 168, 56),   "fill": (50, 32, 0)},
+        "CIERRE":         {"text": (39, 174, 96),    "fill": (8, 38, 16)},
+    }
+    COLS_PDF = [
+        ("Ref",       26), ("Cliente",  50), ("Pedimento", 22), ("P",        8),
+        ("F.Pago",    18), ("SelAle",   18), ("F_E Cont",  18), ("F.Cierre", 18),
+        ("TRF",        9), ("ADM",       9), ("CGA",        9),
+        ("Proform",   22), ("Factura",  22),
+    ]
+    total_w = sum(w for _, w in COLS_PDF)  # 257mm
+
+    resumen_pie = (
+        f"EN TRAFICO: {etapa_map['EN TRAFICO']}  |  "
+        f"ADMINISTRATIVO: {etapa_map['ADMINISTRATIVO']}  |  "
+        f"CIERRE: {etapa_map['CIERRE']}"
+    )
 
     class PDF(FPDF):
         def header(self):
-            self.set_font("DejaVu", "B", 13)
-            self.cell(0, 9, "Score Card v1 — Ocampo Grupo Aduanal", align="C",
-                      new_x="LMARGIN", new_y="NEXT")
+            self.set_font("DejaVu", "B", 14)
+            self.cell(0, 8, "BALANCED SCORECARD", align="C", new_x="LMARGIN", new_y="NEXT")
+            self.set_font("DejaVu", "B", 10)
+            self.cell(0, 6, "OCAMPO GRUPO ADUANAL", align="C", new_x="LMARGIN", new_y="NEXT")
             self.set_font("DejaVu", "", 8)
             self.cell(0, 5, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  {filtros_desc}",
                       align="C", new_x="LMARGIN", new_y="NEXT")
             self.ln(2)
 
         def footer(self):
-            self.set_y(-13)
+            self.set_y(-14)
             self.set_font("DejaVu", "", 7)
-            self.cell(0, 8, f"Pág. {self.page_no()} — Reporteador Maestro · Nuevas Tecnologías", align="C")
+            self.cell(0, 5, resumen_pie, align="C", new_x="LMARGIN", new_y="NEXT")
+            self.cell(0, 5,
+                      f"Pág. {self.page_no()} — Reporteador Maestro · Nuevas Tecnologías",
+                      align="C")
 
     pdf = PDF(orientation="L", unit="mm", format="A4")
+    pdf.set_auto_page_break(False)
     pdf.add_font("DejaVu", "",  font_path)
     pdf.add_font("DejaVu", "B", font_bold)
     pdf.add_page()
 
-    COLORES_ETAPA = {
-        "EN TRAFICO":     (74, 144, 226),
-        "ADMINISTRATIVO": (232, 168, 56),
-        "CIERRE":         (39, 174, 96),
-        "OTRO":           (127, 140, 141),
-    }
+    PAGE_H = pdf.h
+    BOTTOM = 18  # espacio para footer
 
-    # ── Resumen por etapa ──
-    pdf.set_font("DejaVu", "B", 10)
-    pdf.cell(0, 7, "Resumen por Etapa de Operación", new_x="LMARGIN", new_y="NEXT")
-    pdf.set_fill_color(40, 44, 52)
+    def _need_break(h):
+        return pdf.get_y() + h > PAGE_H - BOTTOM
 
-    col_w = [55, 30, 30]
-    pdf.set_font("DejaVu", "B", 8)
-    for h, w in zip(["Etapa", "Refs.", "% del Total"], col_w):
-        pdf.cell(w, 6, h, border=1, fill=True, align="C")
-    pdf.ln()
-
-    pdf.set_font("DejaVu", "", 8)
-    for etapa, cnt in etapa_map.items():
-        pct = round(cnt * 100 / (total_general or 1), 1)
-        r, g, b = COLORES_ETAPA.get(etapa, (100, 100, 100))
-        pdf.set_text_color(r, g, b)
-        pdf.cell(55, 6, f"  {etapa}", border=1)
-        pdf.set_text_color(0, 0, 0)
-        pdf.cell(30, 6, f"{cnt:,}", border=1, align="C")
-        pdf.cell(30, 6, f"{pct}%", border=1, align="C")
-        pdf.ln()
-
-    pdf.set_text_color(0, 0, 0)
-    pdf.ln(4)
-
-    # ── Tabla de detalle (excluye OTRO) ──
-    df_act = df_det[df_det["etapa_operacion"] != "OTRO"].copy()
-    if df_act.empty:
-        pdf.set_font("DejaVu", "", 9)
-        pdf.cell(0, 7, "Sin registros activos (EN TRAFICO / ADMINISTRATIVO / CIERRE).",
-                 new_x="LMARGIN", new_y="NEXT")
-    else:
-        COLS = [
-            ("Referencia", 30), ("Cliente", 52), ("Etapa", 26),
-            ("F. Pago", 20), ("F. Contab.", 20), ("F. Cierre", 20),
-            ("TRF", 10), ("ADM", 10), ("CGA", 10),
-            ("Ejecutivo", 40),
-        ]
-        pdf.set_font("DejaVu", "B", 7)
+    def _draw_col_headers():
+        pdf.set_font("DejaVu", "B", 6.5)
         pdf.set_fill_color(30, 39, 97)
         pdf.set_text_color(202, 220, 252)
-        for label, w in COLS:
-            pdf.cell(w, 6, label, border=1, fill=True, align="C")
+        for label, w in COLS_PDF:
+            pdf.cell(w, 5.5, label, border=1, fill=True, align="C")
         pdf.ln()
         pdf.set_text_color(0, 0, 0)
 
-        pdf.set_font("DejaVu", "", 6.5)
+    def _draw_suc_header(suc, cont=False):
+        pdf.set_font("DejaVu", "B", 9)
+        pdf.set_fill_color(20, 25, 60)
+        pdf.set_text_color(202, 220, 252)
+        label = f"  SUCURSAL: {suc.upper()}" + (" (cont.)" if cont else "")
+        pdf.cell(total_w, 7, label, border=0, fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        pdf.ln(1)
+
+    def _draw_etapa_header(etapa, cont=False):
+        c = COLORES.get(etapa, {"text": (100, 100, 100), "fill": (20, 20, 20)})
+        pdf.set_font("DejaVu", "B", 7)
+        pdf.set_fill_color(*c["fill"])
+        pdf.set_text_color(*c["text"])
+        label = f"  {etapa}" + (" (cont.)" if cont else "")
+        pdf.cell(total_w, 6, label, border=0, fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(0, 0, 0)
+        _draw_col_headers()
+
+    df_act = df_det[df_det["etapa_operacion"].isin(COLORES)].copy()
+    if df_act.empty:
+        pdf.set_font("DejaVu", "", 10)
+        pdf.cell(0, 10, "Sin registros activos con los filtros seleccionados.",
+                 new_x="LMARGIN", new_y="NEXT")
+    else:
+        ETAPA_ORD = {"EN TRAFICO": 1, "ADMINISTRATIVO": 2, "CIERRE": 3}
+        df_act["_ord"] = df_act["etapa_operacion"].map(ETAPA_ORD).fillna(4)
+        df_act = df_act.sort_values(
+            ["sucursal", "_ord", "dias_adm"], ascending=[True, True, False]
+        )
+        cur_suc = None
+        cur_etapa = None
+
         for _, row in df_act.iterrows():
+            suc   = str(row.get("sucursal", "") or "SIN SUCURSAL").strip()
             etapa = str(row.get("etapa_operacion", ""))
-            r, g, b = COLORES_ETAPA.get(etapa, (0, 0, 0))
+
+            if suc != cur_suc:
+                if _need_break(18):
+                    pdf.add_page()
+                    _draw_suc_header(suc, cont=False)
+                else:
+                    pdf.ln(2)
+                    _draw_suc_header(suc, cont=False)
+                cur_suc = suc
+                cur_etapa = None
+
+            if etapa != cur_etapa:
+                if _need_break(13):
+                    pdf.add_page()
+                    _draw_suc_header(cur_suc, cont=True)
+                cur_etapa = etapa
+                _draw_etapa_header(etapa, cont=False)
+
+            if _need_break(5.5):
+                pdf.add_page()
+                _draw_suc_header(cur_suc, cont=True)
+                _draw_etapa_header(cur_etapa, cont=True)
+
+            pagado = "SI" if row.get("pedimento_pagado") else "NO"
+            pdf.set_font("DejaVu", "", 6.5)
             vals = [
-                (str(row.get("referencia", "") or "")[:18], 30, "L"),
-                (str(row.get("cliente", "") or "")[:34], 52, "L"),
-                (etapa, 26, "C"),
-                (str(row.get("fecha_pago", "") or "")[:10], 20, "C"),
-                (str(row.get("f_e_contabilidad", "") or "")[:10], 20, "C"),
-                (str(row.get("fecha_cierre_adm", "") or "")[:10], 20, "C"),
-                (str(int(row.get("dias_trf", 0) or 0)), 10, "C"),
-                (str(int(row.get("dias_adm", 0) or 0)), 10, "C"),
-                (str(int(row.get("dias_cga", 0) or 0)), 10, "C"),
-                (str(row.get("ejecutivo", "") or "")[:26], 40, "L"),
+                (str(row.get("referencia",       "") or "")[:18], 26, "L"),
+                (str(row.get("cliente",          "") or "")[:32], 50, "L"),
+                (str(row.get("pedimento",        "") or "")[:14], 22, "L"),
+                (pagado,                                            8, "C"),
+                (str(row.get("fecha_pago",       "") or "")[:10], 18, "C"),
+                (str(row.get("fecha_prim_sel",   "") or "")[:10], 18, "C"),
+                (str(row.get("f_e_contabilidad", "") or "")[:10], 18, "C"),
+                (str(row.get("fecha_cierre_adm", "") or "")[:10], 18, "C"),
+                (str(int(row.get("dias_trf", 0) or 0)),            9, "C"),
+                (str(int(row.get("dias_adm", 0) or 0)),            9, "C"),
+                (str(int(row.get("dias_cga", 0) or 0)),            9, "C"),
+                (str(row.get("folio_proforma",   "") or "")[:14], 22, "L"),
+                (str(row.get("num_fac_cga",      "") or "")[:14], 22, "L"),
             ]
-            for i, (txt, w, align) in enumerate(vals):
-                pdf.set_text_color(r, g, b) if i == 2 else pdf.set_text_color(0, 0, 0)
+            for txt, w, align in vals:
                 pdf.cell(w, 5.5, txt, border=1, align=align)
             pdf.ln()
-
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font("DejaVu", "", 7)
-        pdf.cell(0, 5, f"Total registros activos: {len(df_act):,}  (OTRO excluido del detalle)",
-                 new_x="LMARGIN", new_y="NEXT")
 
     buf = io.BytesIO()
     pdf.output(buf)
@@ -618,13 +646,13 @@ def vista_scorecard_v1():
     # ── Filtros ──
     @st.cache_data(ttl=300)
     def _sucursales():
-        df = query_pg("SELECT DISTINCT sucursal FROM scorecard_v1 WHERE sucursal IS NOT NULL ORDER BY sucursal")
+        df = query_pg("SELECT DISTINCT sucursal FROM mv_scorecard_v1_activo WHERE sucursal IS NOT NULL ORDER BY sucursal")
         return df["sucursal"].tolist() if not df.empty else []
 
     opciones_suc = ["TODAS"] + _sucursales()
     sucursales_sel = st.sidebar.multiselect("Sucursal", opciones_suc, default=["TODAS"], key="scv1_suc")
 
-    ETAPAS = ["EN TRAFICO", "ADMINISTRATIVO", "CIERRE", "OTRO"]
+    ETAPAS = ["EN TRAFICO", "ADMINISTRATIVO", "CIERRE"]
     etapas_sel = st.sidebar.multiselect("Etapa de operación", ETAPAS, default=ETAPAS, key="scv1_etapa")
 
     solo_proforma = st.sidebar.checkbox("Solo referencias con proforma", value=False, key="scv1_prof")
@@ -638,7 +666,7 @@ def vista_scorecard_v1():
         s = ", ".join([f"'{x}'" for x in etapas_sel])
         conds.append(f"etapa_operacion IN ({s})")
     if solo_proforma:
-        conds.append("tiene_proforma = TRUE")
+        conds.append("folio_proforma IS NOT NULL")
     where = ("WHERE " + " AND ".join(conds)) if conds else ""
 
     filtros_desc = (
@@ -696,7 +724,7 @@ def vista_scorecard_v1():
         unsafe_allow_html=True,
     )
 
-    # ── Tabla de detalle ──
+    # ── Tabla de detalle (usa MV para velocidad — solo activos) ──
     @st.cache_data(ttl=120)
     def _detalle(w):
         return query_pg(f"""
@@ -705,9 +733,9 @@ def vista_scorecard_v1():
                 tipo_operacion, fecha_pago, fecha_prim_sel,
                 f_e_contabilidad, fecha_cierre_adm,
                 dias_trf, dias_adm, dias_cga,
-                etapa_operacion, tiene_proforma,
-                num_fac_cga, honorarios, resultado_sel_desc
-            FROM scorecard_v1
+                etapa_operacion, pedimento_pagado,
+                folio_proforma, num_fac_cga
+            FROM mv_scorecard_v1_activo
             {w}
             ORDER BY
                 CASE etapa_operacion
@@ -758,31 +786,55 @@ def vista_scorecard_v1():
         return "background-color: #4a1515; color: #F87171"
 
     COLS_SHOW = [
-        "referencia", "cliente", "pedimento", "sucursal", "ejecutivo",
-        "tipo_operacion", "fecha_pago", "fecha_prim_sel",
-        "f_e_contabilidad", "fecha_cierre_adm",
+        "referencia", "cliente", "pedimento", "pedimento_pagado",
+        "sucursal", "ejecutivo", "tipo_operacion",
+        "fecha_pago", "fecha_prim_sel", "f_e_contabilidad", "fecha_cierre_adm",
         "dias_trf", "dias_adm", "dias_cga",
-        "etapa_operacion", "tiene_proforma", "num_fac_cga", "honorarios",
+        "etapa_operacion", "folio_proforma", "num_fac_cga",
     ]
-    HEADERS = [
-        "Referencia", "Cliente", "Pedimento", "Sucursal", "Ejecutivo",
-        "Tipo Op", "F. Pago", "F. PrimSel",
-        "F. Contabilidad", "F. Cierre",
-        "TRF", "ADM", "CGA",
-        "Etapa", "Proforma", "Num. Fac", "Honorarios",
-    ]
+    RENAME = {
+        "referencia":       "Referencia",
+        "cliente":          "Cliente",
+        "pedimento":        "Pedimento",
+        "pedimento_pagado": "P",
+        "sucursal":         "Sucursal",
+        "ejecutivo":        "Ejecutivo",
+        "tipo_operacion":   "Tipo Op",
+        "fecha_pago":       "F. Pago",
+        "fecha_prim_sel":   "F. PrimSel",
+        "f_e_contabilidad": "F. Contabilidad",
+        "fecha_cierre_adm": "F. Cierre",
+        "dias_trf":         "Dias TRF",
+        "dias_adm":         "Dias ADM",
+        "dias_cga":         "Dias CGA",
+        "etapa_operacion":  "Etapa",
+        "folio_proforma":   "Proforma",
+        "num_fac_cga":      "Num. Fac",
+    }
 
     df_show = df[[c for c in COLS_SHOW if c in df.columns]].copy()
-    df_show.columns = HEADERS[: len(df_show.columns)]
-    df_show["Honorarios"] = pd.to_numeric(df_show["Honorarios"], errors="coerce")
+    df_show = df_show.rename(columns=RENAME)
+    df_show["P"] = df_show["P"].map({True: "SI", False: "NO", 1: "SI", 0: "NO"})
+
+    # CORRECCIÓN 2 — Paginación
+    total_filas = len(df_show)
+    page_size = 500
+    if total_filas > page_size:
+        st.caption(
+            f"Mostrando primeros {page_size} de {total_filas:,} registros. "
+            "Descarga Excel para ver todos."
+        )
+        df_display = df_show.head(page_size)
+    else:
+        df_display = df_show
 
     st.dataframe(
-        df_show.style
+        df_display.style
             .map(_cel_etapa, subset=["Etapa"])
-            .map(color_trf,  subset=["TRF"])
-            .map(color_adm,  subset=["ADM"])
-            .map(color_cga,  subset=["CGA"])
-            .format({"Honorarios": "${:,.0f}", "TRF": "{:.0f}", "ADM": "{:.0f}", "CGA": "{:.0f}"},
+            .map(color_trf,  subset=["Dias TRF"])
+            .map(color_adm,  subset=["Dias ADM"])
+            .map(color_cga,  subset=["Dias CGA"])
+            .format({"Dias TRF": "{:.0f}", "Dias ADM": "{:.0f}", "Dias CGA": "{:.0f}"},
                     na_rep="—"),
         use_container_width=True,
         height=600,
@@ -810,20 +862,31 @@ def vista_scorecard_v1():
         )
 
     with ex2:
+        # PDF: siempre las 3 etapas activas; respeta filtro de sucursal/proforma
+        pdf_conds = [c for c in conds if "etapa_operacion" not in c]
+        pdf_where = ("WHERE " + " AND ".join(pdf_conds)) if pdf_conds else ""
+
         @st.cache_data(ttl=120)
-        def _pdf(w, fd):
+        def _pdf(pw, fd):
             df_pdf = query_pg(f"""
-                SELECT referencia, cliente, ejecutivo, tipo_operacion,
-                       fecha_pago, f_e_contabilidad, fecha_cierre_adm,
-                       dias_trf, dias_adm, dias_cga, etapa_operacion
-                FROM scorecard_v1 {w}
-                ORDER BY CASE etapa_operacion
-                    WHEN 'EN TRAFICO' THEN 1 WHEN 'ADMINISTRATIVO' THEN 2
-                    WHEN 'CIERRE' THEN 3 ELSE 4 END, dias_adm DESC
+                SELECT referencia, cliente, pedimento, sucursal, pedimento_pagado,
+                       fecha_pago, fecha_prim_sel, f_e_contabilidad, fecha_cierre_adm,
+                       dias_trf, dias_adm, dias_cga, etapa_operacion,
+                       folio_proforma, num_fac_cga
+                FROM mv_scorecard_v1_activo
+                {pw}
+                ORDER BY sucursal,
+                         CASE etapa_operacion
+                             WHEN 'EN TRAFICO'     THEN 1
+                             WHEN 'ADMINISTRATIVO' THEN 2
+                             WHEN 'CIERRE'         THEN 3
+                             ELSE 4
+                         END,
+                         dias_adm DESC
             """)
             return _pdf_scorecard_v1(df_pdf, etapa_map, total_general, fd)
 
-        pdf_bytes = _pdf(where, filtros_desc)
+        pdf_bytes = _pdf(pdf_where, filtros_desc)
         st.download_button(
             label="📄 Descargar PDF",
             data=pdf_bytes,

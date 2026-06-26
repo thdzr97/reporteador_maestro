@@ -124,7 +124,15 @@ def extraer(dias_atras=180):
 
 
 def transformar(df):
-    """Calcula días hábiles por etapa según lógica PDF Ocampo GA 25/06/2026."""
+    """
+    Días hábiles con aging acumulativo que PARA cuando cierra la etapa.
+    TRF: fecha_prim_sel → f_e_contabilidad (o HOY si aún no cierra)
+    ADM: f_e_contabilidad → fecha_cierre_adm (o HOY si aún no cierra)
+    CGA: fecha_cierre_adm → HOY
+    """
+    from datetime import date as _date
+    hoy = pd.Timestamp(_date.today())
+
     fecha_cols = [
         'fecha_pago', 'fecha_prim_sel', 'fecha_administrativo',
         'f_e_contabilidad', 'fecha_cierre_adm', 'fecha_apertura',
@@ -135,37 +143,27 @@ def transformar(df):
 
     df['honorarios'] = pd.to_numeric(df['honorarios'], errors='coerce')
 
-    # DIAS TRF — FechaPago → FechaPrimSel (si son fechas distintas)
-    df['dias_trf'] = df.apply(
-        lambda r: dias_habiles(r['fecha_pago'], r['fecha_prim_sel'])
-        if pd.notna(r['fecha_pago']) and pd.notna(r['fecha_prim_sel'])
-           and r['fecha_pago'].date() != r['fecha_prim_sel'].date()
-        else 0,
-        axis=1,
-    )
-
-    # DIAS ADM — "aging": días calendario desde f_e_contabilidad hasta HOY
-    # Mide cuántos días lleva el trámite desde que se envió a contabilidad
-    # Validado contra PDF 25/06/2026: AER2600448I0=15, AIF2600307I2=9, AER2600397I1=36
-    hoy = datetime.now().date()
-
-    def calc_adm(r):
-        f_ini = r['f_e_contabilidad']
-        if pd.isna(f_ini):
+    # DIAS TRF — para cuando llega f_e_contabilidad
+    def calc_trf(r):
+        if pd.isna(r['fecha_prim_sel']):
             return 0
-        return (hoy - f_ini.date()).days
+        f_fin = r['f_e_contabilidad'] if pd.notna(r['f_e_contabilidad']) else hoy
+        return dias_habiles(r['fecha_prim_sel'], f_fin)
+    df['dias_trf'] = df.apply(calc_trf, axis=1)
 
+    # DIAS ADM — para cuando llega fecha_cierre_adm
+    def calc_adm(r):
+        if pd.isna(r['f_e_contabilidad']):
+            return 0
+        f_fin = r['fecha_cierre_adm'] if pd.notna(r['fecha_cierre_adm']) else hoy
+        return dias_habiles(r['f_e_contabilidad'], f_fin)
     df['dias_adm'] = df.apply(calc_adm, axis=1)
 
-    # DIAS CGA — "aging": días calendario desde fecha_cierre_adm hasta HOY
-    # Mide cuántos días han pasado desde que se cerró el trámite
-    # Validado: AER2600448I0=2, AIF2600307I2=3 (base: Jun 25 = fecha PDF)
+    # DIAS CGA — aging desde cierre hasta hoy
     def calc_cga(r):
-        f_ini = r['fecha_cierre_adm']
-        if pd.isna(f_ini):
+        if pd.isna(r['fecha_cierre_adm']):
             return 0
-        return (hoy - f_ini.date()).days
-
+        return dias_habiles(r['fecha_cierre_adm'], hoy)
     df['dias_cga'] = df.apply(calc_cga, axis=1)
 
     df['tiene_proforma'] = df['tiene_proforma'].fillna(0).astype(bool)

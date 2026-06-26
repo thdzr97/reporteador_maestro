@@ -17,6 +17,8 @@ from src.etl.etl_cumplimiento import etl_incremental
 from src.etl.etl_sabana import run_etl_sabana
 from src.etl.etl_scorecard import run_etl_scorecard
 from src.etl.etl_scorecard_v1 import run_etl_scorecard_v1
+from sqlalchemy import text
+from src.etl.conexion import get_pg_engine
 
 logging.basicConfig(
     level=logging.INFO,
@@ -52,5 +54,12 @@ while True:
         run_etl_scorecard_v1()
     except Exception as e:
         logger.error(f"Error ETL scorecard_v1: {e}")
+
+    try:
+        with get_pg_engine().begin() as conn:
+            conn.execute(text("REFRESH MATERIALIZED VIEW mv_scorecard_v1_activo"))
+        logger.info("MV mv_scorecard_v1_activo refrescada")
+    except Exception as e:
+        logger.error(f"Error REFRESH MV scorecard_v1: {e}")
 
     time.sleep(INTERVALO)
