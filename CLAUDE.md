@@ -124,13 +124,13 @@ La ETL etl_scorecard_v1.py está validada y en producción desde 26/06/2026.
 - Fuente: [SIRADMIN].[dbo].[vw_sc_operacion_base] + OUTER APPLY SIR_VT_Sabana_Pedimento
 - Dedup: ROW_NUMBER PARTITION BY Ref_prf ORDER BY FechaExtraccion DESC
 - 4 etapas: EN TRAFICO (109), ADMINISTRATIVO (105), CIERRE (819), OTRO (2,033)
-- Lógica días — VALIDADA contra PDF Ocampo GA 25/06/2026 (5/6 refs exactas):
-  - dias_trf = hábiles(FechaPago → FechaPrimeraSeleccion) si fechas distintas, else 0
-    Método: sin contar día inicio, sí día fin, L-V
-  - dias_adm = calendario(f_e_contabilidad → HOY)  ← aging, aumenta cada día
-    Es 0 si f_e_contabilidad IS NULL (EN TRAFICO sin contabilidad)
-  - dias_cga = calendario(FechaCierreAdmin → HOY)  ← aging, días desde cierre
-    Es 0 si FechaCierreAdmin IS NULL (aún abierto)
+- Lógica días — VALIDADA por gerente general 26/06/2026 (aging que PARA al cerrar etapa):
+  - dias_trf = hábiles(fecha_prim_sel → f_e_contabilidad) si cerrado, sino → HOY
+    Es 0 si fecha_prim_sel IS NULL
+  - dias_adm = hábiles(f_e_contabilidad → fecha_cierre_adm) si cerrado, sino → HOY
+    Es 0 si f_e_contabilidad IS NULL
+  - dias_cga = hábiles(fecha_cierre_adm → HOY)  ← aging post-cierre
+    Es 0 si fecha_cierre_adm IS NULL (aún sin cierre)
 - Columnas clave de vw_sc_operacion_base: folio (lowercase), num_fac (lowercase),
   f_e_contabilidad, FechaPrimeraSeleccion, EtapaOperacion (pre-calculado),
   nIdEjecutivo = SIEMPRE NULL (usar OUTER APPLY sábana para Ejecutivo)
@@ -176,8 +176,7 @@ Navegación: session_state (un solo app.py, sin pages/)
 3. Score Card — lee scorecard_referencias
 4. Mis Reportes — lee reportes_guardados
 
-### Reportes próximos:
-5. Score Card v1 — leerá scorecard_v1 (ETL validado, UI pendiente)
+5. Score Card v1 — scorecard_v1 (ETL + UI activos desde v0.3)
 
 ---
 
@@ -237,7 +236,7 @@ Flujo:
 - PR obligatorio antes de mergear a main
 - Tag de versión en cada release: v0.1, v0.2, v1.0
 
-Versión actual: v0.2 (4 reportes activos, ETL funcionando)
+Versión actual: v0.3 (5 reportes activos, Score Card v1 validado por gerente)
 
 Comandos frecuentes desde el servidor:
 ```bash
