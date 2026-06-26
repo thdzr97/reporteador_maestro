@@ -34,90 +34,138 @@ def ir_a(vista):
 # VISTA: INICIO
 # ══════════════════════════════════════════════════════════════════════
 def vista_inicio():
-    st.markdown("""
-    <style>
-    #MainMenu, footer, header { visibility: hidden; }
-    .block-container { padding-top: 2rem; padding-bottom: 2rem; }
-    .rm-card {
-        background: #1E2761;
-        border: 1px solid rgba(202, 220, 252, 0.12);
-        border-radius: 14px;
-        padding: 28px 24px 20px 24px;
-        transition: border-color 0.2s, transform 0.2s;
-        min-height: 190px;
-        display: flex; flex-direction: column; justify-content: space-between;
-    }
-    .rm-card:hover { border-color: rgba(202, 220, 252, 0.45); transform: translateY(-2px); }
-    .rm-card.disabled { opacity: 0.45; cursor: not-allowed; }
-    .rm-card-icon { font-size: 2.2rem; margin-bottom: 10px; }
-    .rm-card-title { color: #CADCFC; font-size: 1.05rem; font-weight: 700; margin-bottom: 6px; }
-    .rm-card-desc { color: #8B9DB5; font-size: 0.85rem; line-height: 1.5; flex-grow: 1; }
-    .rm-badge { display: inline-block; border-radius: 20px; padding: 3px 11px; font-size: 0.72rem; margin-top: 14px; font-weight: 600; }
-    .rm-badge.live { background: rgba(34,197,94,0.15); color: #4ADE80; border: 1px solid rgba(34,197,94,0.3); }
-    .rm-badge.soon { background: rgba(202,220,252,0.08); color: #8B9DB5; border: 1px solid rgba(202,220,252,0.12); }
-    .rm-header { border-bottom: 1px solid rgba(202,220,252,0.12); padding-bottom: 20px; margin-bottom: 8px; }
-    .rm-title { font-size: 1.8rem; font-weight: 700; color: #CADCFC; margin: 0; }
-    .rm-subtitle { color: #8B9DB5; font-size: 0.9rem; margin-top: 4px; }
-    .rm-footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid rgba(202,220,252,0.08); color: #4A5568; font-size: 0.78rem; text-align: center; }
-    </style>
-    """, unsafe_allow_html=True)
+    import base64 as _b64
 
     st.markdown("""
-    <div class="rm-header">
-        <p class="rm-title">📊 Reporteador Maestro</p>
-        <p class="rm-subtitle">Ocampo Grupo Aduanal · Área de Nuevas Tecnologías · Selecciona el reporte</p>
-    </div>
-    """, unsafe_allow_html=True)
+<style>
+.main .block-container { padding-top: 0 !important; max-width: 1200px; }
+.rm-header {
+    background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+    padding: 48px 40px;
+    border-radius: 0 0 24px 24px;
+    margin-bottom: 32px;
+    text-align: center;
+}
+.rm-header h1 { color: white; font-size: 2rem; font-weight: 700; margin: 0 0 6px 0; }
+.rm-header p  { color: rgba(255,255,255,0.85); font-size: 1rem; margin: 0; }
+.rm-section-title {
+    color: #212529; font-size: 1.3rem; font-weight: 600;
+    margin-bottom: 20px; padding-left: 4px;
+}
+.rm-card {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    padding: 24px 20px 20px 20px;
+    text-align: center;
+    min-height: 200px;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+.rm-card:hover {
+    border-color: #1a73e8;
+    box-shadow: 0 4px 16px rgba(26,115,232,0.15);
+    transform: translateY(-2px);
+}
+.rm-card.disabled { opacity: 0.5; cursor: not-allowed; }
+.rm-card-icon  { font-size: 2.5rem; margin-bottom: 12px; }
+.rm-card-title { color: #1a73e8; font-size: 1rem; font-weight: 700; margin-bottom: 8px; line-height: 1.3; }
+.rm-card-desc  { color: #6c757d; font-size: 0.82rem; line-height: 1.5; }
+.rm-badge { display: inline-block; border-radius: 20px; padding: 3px 10px; font-size: 0.72rem; margin-top: 12px; font-weight: 600; }
+.rm-badge.live { background: rgba(25,135,84,0.1); color: #198754; border: 1px solid rgba(25,135,84,0.3); }
+.rm-badge.soon { background: #f8f9fa; color: #6c757d; border: 1px solid #dee2e6; }
+#MainMenu { visibility: hidden; }
+footer    { visibility: hidden; }
+</style>
+""", unsafe_allow_html=True)
+
+    logo_path = '/var/www/html/ocmx/reporteador-maestro/assets/OGA-Logo01.png'
+    logo_b64 = ""
+    if os.path.exists(logo_path):
+        with open(logo_path, "rb") as _f:
+            logo_b64 = _b64.b64encode(_f.read()).decode()
+
+    if logo_b64:
+        st.markdown(f"""
+<div class="rm-header">
+    <img src="data:image/png;base64,{logo_b64}"
+         style="height:60px; margin-bottom:12px; filter:brightness(0) invert(1);">
+    <h1>OCAMPO GRUPO ADUANAL</h1>
+    <p>Reporteador Maestro · Área de Nuevas Tecnologías</p>
+</div>
+""", unsafe_allow_html=True)
+    else:
+        st.markdown("""
+<div class="rm-header">
+    <h1>🏛️ OCAMPO GRUPO ADUANAL</h1>
+    <p>Reporteador Maestro · Área de Nuevas Tecnologías</p>
+</div>
+""", unsafe_allow_html=True)
+
+    st.markdown('<p class="rm-section-title">📋 Selecciona el reporte</p>',
+                unsafe_allow_html=True)
 
     REPORTES = [
-        {"icon": "✅", "titulo": "Dashboard de Cumplimiento",
-         "desc": "Indicadores operativos y administrativos. Filtra por aduana, tipo de operación, cliente y rango de fechas.",
-         "live": True, "vista": "cumplimiento", "btn": "Ver Dashboard"},
-        {"icon": "📋", "titulo": "Sábana de Pedimentos",
-         "desc": "Ciclo completo de referencias: ejecutivo, estatus, honorarios, selecciones y observaciones.",
-         "live": True, "vista": "sabana", "btn": "Ver Sábana"},
-        {"icon": "📈", "titulo": "Score Card",
-         "desc": "KPIs por ejecutivo: cumplimiento de calidad, días promedio y saldo pendiente.",
-         "live": True, "vista": "scorecard", "btn": "Ver Score Card"},
-        {"icon": "📁", "titulo": "Mis Reportes",
-         "desc": "Reportes personalizados guardados. Crea y versiona vistas con tus filtros y columnas preferidas.",
-         "live": True, "vista": "mis_reportes", "btn": "Ver Mis Reportes"},
-        {"icon": "🎯", "titulo": "Score Card v1",
-         "desc": "Seguimiento operativo por etapa: En Tráfico, Administrativo y Cierre. Días de aging y exportación.",
-         "live": True, "vista": "scorecard_v1", "btn": "Ver Score Card v1"},
-        {"icon": "💰", "titulo": "Reporte Financiero",
-         "desc": "Facturación, pagos y cobranza por cliente y periodo.", "live": False},
-        {"icon": "🏢", "titulo": "Reporte por Cliente",
-         "desc": "Análisis detallado de cumplimiento y volumen por cliente.", "live": False},
-        {"icon": "⚙️", "titulo": "Configuración",
-         "desc": "Parámetros del sistema, gestión de usuarios y preferencias.", "live": False},
+        {
+            "icon": "✅", "titulo": "Dashboard de Cumplimiento",
+            "desc": "Indicadores operativos y administrativos por aduana, tipo de operación y rango de fechas.",
+            "live": True, "vista": "cumplimiento", "btn": "Ver Dashboard",
+        },
+        {
+            "icon": "📋", "titulo": "Score Card",
+            "desc": "Balanced Score Card por sucursal y etapa: En Tráfico, Administrativo, Cierre.",
+            "live": True, "vista": "scorecard_v1", "btn": "Ver Score Card",
+        },
+        {
+            "icon": "📄", "titulo": "Sábana de Pedimentos",
+            "desc": "Reporte padre — ciclo completo de referencias: ejecutivo, estatus, honorarios y observaciones.",
+            "live": True, "vista": "sabana", "btn": "Ver Sábana",
+        },
+        {
+            "icon": "📈", "titulo": "Score Card — KPIs Ejecutivo",
+            "desc": "KPIs por ejecutivo: cumplimiento de calidad, días promedio y saldo pendiente.",
+            "live": False,
+        },
+        {
+            "icon": "📁", "titulo": "Mis Reportes",
+            "desc": "Reportes guardados personalizados. Crea y versiona vistas con tus filtros preferidos.",
+            "live": False,
+        },
+        {
+            "icon": "💰", "titulo": "Reporte Financiero",
+            "desc": "Facturación, pagos y cobranza por cliente y periodo.",
+            "live": False,
+        },
     ]
 
     cols = st.columns(3)
     for i, r in enumerate(REPORTES):
         with cols[i % 3]:
-            badge = '<span class="rm-badge live">● En vivo</span>' if r["live"] else '<span class="rm-badge soon">Próximamente</span>'
+            badge = ('<span class="rm-badge live">● En vivo</span>'
+                     if r["live"]
+                     else '<span class="rm-badge soon">Próximamente</span>')
             st.markdown(f"""
-            <div class="rm-card {'disabled' if not r['live'] else ''}">
-                <div>
-                    <div class="rm-card-icon">{r['icon']}</div>
-                    <div class="rm-card-title">{r['titulo']}</div>
-                    <div class="rm-card-desc">{r['desc']}</div>
-                </div>
-                {badge}
-            </div>
-            """, unsafe_allow_html=True)
+<div class="rm-card {'disabled' if not r['live'] else ''}">
+    <div class="rm-card-icon">{r['icon']}</div>
+    <div class="rm-card-title">{r['titulo']}</div>
+    <div class="rm-card-desc">{r['desc']}</div>
+    {badge}
+</div>
+""", unsafe_allow_html=True)
             if r["live"]:
-                st.button(f"📊 {r['btn']}", key=f"btn_{i}", on_click=ir_a, args=(r["vista"],), use_container_width=True)
+                st.button(r["btn"], key=f"btn_{i}",
+                          on_click=ir_a, args=(r["vista"],),
+                          use_container_width=True)
             else:
-                st.button("Próximamente", key=f"btn_{i}", disabled=True, use_container_width=True)
+                st.button("Próximamente", key=f"btn_{i}",
+                          disabled=True, use_container_width=True)
 
     st.markdown("""
-    <div class="rm-footer">
-        Fuente: data mart PostgreSQL · ETL desde SIRADMIN cada 90 seg ·
-        Reporteador Maestro v0.1 · Nuevas Tecnologías
-    </div>
-    """, unsafe_allow_html=True)
+<div style="text-align:center; color:#6c757d; font-size:0.78rem;
+            margin-top:40px; padding-top:16px; border-top:1px solid #dee2e6;">
+    Reporteador Maestro v0.3 · Nuevas Tecnologías · Ocampo Grupo Aduanal
+</div>
+""", unsafe_allow_html=True)
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -652,10 +700,13 @@ def vista_scorecard_v1():
     opciones_suc = ["TODAS"] + _sucursales()
     sucursales_sel = st.sidebar.multiselect("Sucursal", opciones_suc, default=["TODAS"], key="scv1_suc")
 
-    ETAPAS = ["EN TRAFICO", "ADMINISTRATIVO", "CIERRE"]
-    etapas_sel = st.sidebar.multiselect("Etapa de operación", ETAPAS, default=ETAPAS, key="scv1_etapa")
-
-    solo_proforma = st.sidebar.checkbox("Solo referencias con proforma", value=False, key="scv1_prof")
+    ETAPAS = ["EN TRAFICO", "ADMINISTRATIVO", "CIERRE", "OTRO"]
+    etapas_sel = st.sidebar.multiselect(
+        "Etapa de operación",
+        options=ETAPAS,
+        default=ETAPAS,
+        key="scv1_etapa",
+    )
 
     # ── WHERE dinámico ──
     conds = []
@@ -665,14 +716,11 @@ def vista_scorecard_v1():
     if etapas_sel and len(etapas_sel) < len(ETAPAS):
         s = ", ".join([f"'{x}'" for x in etapas_sel])
         conds.append(f"etapa_operacion IN ({s})")
-    if solo_proforma:
-        conds.append("folio_proforma IS NOT NULL")
     where = ("WHERE " + " AND ".join(conds)) if conds else ""
 
     filtros_desc = (
         ("Suc: " + ", ".join(sucursales_sel) if "TODAS" not in sucursales_sel else "Todas sucursales")
         + " | " + ", ".join(etapas_sel)
-        + (" | Con proforma" if solo_proforma else "")
     )
 
     # ── Dashboard de porcentajes ──
@@ -697,34 +745,7 @@ def vista_scorecard_v1():
         "OTRO":           "#7F8C8D",
     }
 
-    st.title("Score Card — Seguimiento Operativo")
-    st.caption("Fuente: data mart PostgreSQL · ETL desde [SIRADMIN].[dbo].[vw_sc_operacion_base]")
-
-    c1, c2, c3, c4 = st.columns(4)
-    for col, etapa in zip([c1, c2, c3, c4], COLORES):
-        cnt = etapa_map[etapa]
-        pct = round(cnt * 100 / total_general, 1)
-        col.metric(etapa.title(), f"{cnt:,}", delta=f"{pct}%")
-
-    segs = []
-    for etapa, color in COLORES.items():
-        pct = etapa_map[etapa] * 100 / total_general
-        if pct > 0:
-            segs.append(
-                f'<div style="flex:{pct:.2f};background:{color};height:16px;border-radius:2px;margin-right:2px;" '
-                f'title="{etapa}: {pct:.1f}%"></div>'
-            )
-    leyenda = " ".join(
-        f'<span style="color:{c}">■ {e.title()}</span>'
-        for e, c in COLORES.items()
-    )
-    st.markdown(
-        f'<div style="display:flex;width:100%;margin:8px 0 2px 0;">{"".join(segs)}</div>'
-        f'<div style="display:flex;gap:18px;font-size:0.77rem;color:#8B9DB5;margin-bottom:14px;">{leyenda}</div>',
-        unsafe_allow_html=True,
-    )
-
-    # ── Tabla de detalle (usa MV para velocidad — solo activos) ──
+    # ── Pre-computar datos antes de renderizar ──
     @st.cache_data(ttl=120)
     def _detalle(w):
         return query_pg(f"""
@@ -735,7 +756,7 @@ def vista_scorecard_v1():
                 dias_trf, dias_adm, dias_cga,
                 etapa_operacion, pedimento_pagado,
                 folio_proforma, num_fac_cga
-            FROM mv_scorecard_v1_activo
+            FROM scorecard_v1
             {w}
             ORDER BY
                 CASE etapa_operacion
@@ -748,42 +769,6 @@ def vista_scorecard_v1():
         """)
 
     df = _detalle(where)
-
-    if df.empty:
-        st.warning("Sin datos para los filtros seleccionados.")
-        return
-
-    st.subheader(f"Detalle — {len(df):,} referencias")
-
-    ESTILO_ETAPA = {
-        "EN TRAFICO":     "background-color:#0d1f35;color:#4A90E2",
-        "ADMINISTRATIVO": "background-color:#2e1d00;color:#E8A838",
-        "CIERRE":         "background-color:#061a0f;color:#27AE60",
-        "OTRO":           "background-color:#1a1a1a;color:#7F8C8D",
-    }
-
-    def _cel_etapa(val):
-        return ESTILO_ETAPA.get(val, "")
-
-    def color_trf(val):
-        if not isinstance(val, (int, float)) or val == 0:
-            return ""
-        if val <= 3:   return "background-color: #1a4a1a; color: #4ADE80"
-        if val <= 7:   return "background-color: #4a3800; color: #FCD34D"
-        return "background-color: #4a1515; color: #F87171"
-
-    def color_adm(val):
-        if not isinstance(val, (int, float)) or val == 0:
-            return ""
-        if val <= 3:   return "background-color: #1a4a1a; color: #4ADE80"
-        if val <= 7:   return "background-color: #4a3800; color: #FCD34D"
-        return "background-color: #4a1515; color: #F87171"
-
-    def color_cga(val):
-        if not isinstance(val, (int, float)) or val == 0:
-            return ""
-        if val <= 5:   return "background-color: #1a4a1a; color: #4ADE80"
-        return "background-color: #4a1515; color: #F87171"
 
     COLS_SHOW = [
         "referencia", "cliente", "pedimento", "pedimento_pagado",
@@ -816,7 +801,124 @@ def vista_scorecard_v1():
     df_show = df_show.rename(columns=RENAME)
     df_show["P"] = df_show["P"].map({True: "SI", False: "NO", 1: "SI", 0: "NO"})
 
-    # CORRECCIÓN 2 — Paginación
+    pdf_conds = [c for c in conds if "etapa_operacion" not in c]
+    pdf_where = ("WHERE " + " AND ".join(pdf_conds)) if pdf_conds else ""
+
+    @st.cache_data(ttl=120)
+    def _pdf(pw, fd):
+        df_pdf = query_pg(f"""
+            SELECT referencia, cliente, pedimento, sucursal, pedimento_pagado,
+                   fecha_pago, fecha_prim_sel, f_e_contabilidad, fecha_cierre_adm,
+                   dias_trf, dias_adm, dias_cga, etapa_operacion,
+                   folio_proforma, num_fac_cga
+            FROM mv_scorecard_v1_activo
+            {pw}
+            ORDER BY sucursal,
+                     CASE etapa_operacion
+                         WHEN 'EN TRAFICO'     THEN 1
+                         WHEN 'ADMINISTRATIVO' THEN 2
+                         WHEN 'CIERRE'         THEN 3
+                         ELSE 4
+                     END,
+                     dias_adm DESC
+        """)
+        return _pdf_scorecard_v1(df_pdf, etapa_map, total_general, fd)
+
+    pdf_bytes = _pdf(pdf_where, filtros_desc)
+
+    buf_xl = io.BytesIO()
+    df_show.to_excel(buf_xl, index=False, engine="openpyxl")
+    buf_xl.seek(0)
+
+    # ── Render: título → métricas → barra → botones → tabla ──
+    st.title("Balanced Score Card")
+    st.caption("Fuente: data mart PostgreSQL · ETL desde [SIRADMIN].[dbo].[vw_sc_operacion_base]")
+
+    c1, c2, c3, c4 = st.columns(4)
+    for col, etapa in zip([c1, c2, c3, c4], COLORES):
+        cnt = etapa_map[etapa]
+        pct = round(cnt * 100 / total_general, 1)
+        col.metric(etapa.title(), f"{cnt:,}", delta=f"{pct}%")
+
+    segs = []
+    for etapa, color in COLORES.items():
+        pct = etapa_map[etapa] * 100 / total_general
+        if pct > 0:
+            segs.append(
+                f'<div style="flex:{pct:.2f};background:{color};height:16px;border-radius:2px;margin-right:2px;" '
+                f'title="{etapa}: {pct:.1f}%"></div>'
+            )
+    leyenda = " ".join(
+        f'<span style="color:{c}">■ {e.title()}</span>'
+        for e, c in COLORES.items()
+    )
+    st.markdown(
+        f'<div style="display:flex;width:100%;margin:8px 0 2px 0;">{"".join(segs)}</div>'
+        f'<div style="display:flex;gap:18px;font-size:0.77rem;color:#8B9DB5;margin-bottom:14px;">{leyenda}</div>',
+        unsafe_allow_html=True,
+    )
+
+    if df.empty:
+        st.warning("Sin datos para los filtros seleccionados.")
+        return
+
+    # ── Botones de descarga (encima de la tabla) ──
+    col_xls, col_pdf_btn = st.columns([1, 1])
+    with col_xls:
+        st.download_button(
+            label="📥 Descargar Excel",
+            data=buf_xl,
+            file_name=f"scorecard_v1_{date.today().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+    with col_pdf_btn:
+        st.download_button(
+            label="📄 Descargar PDF",
+            data=pdf_bytes,
+            file_name=f"scorecard_v1_{date.today().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+
+    st.divider()
+    st.markdown(f"### Detalle — {len(df):,} referencias")
+
+    ESTILO_ETAPA = {
+        "EN TRAFICO":     "background-color:#E8F0FE;color:#1557B0",
+        "ADMINISTRATIVO": "background-color:#FEF9E7;color:#7D5A00",
+        "CIERRE":         "background-color:#E9F7EF;color:#145A32",
+        "OTRO":           "background-color:#F5F5F5;color:#5F5E5A",
+    }
+
+    def _cel_etapa(val):
+        return ESTILO_ETAPA.get(val, "")
+
+    def color_trf(val):
+        if not isinstance(val, (int, float)) or val == 0:
+            return ''
+        if val <= 3:
+            return 'background-color: rgba(25,135,84,0.15); color: #0a3622; font-weight:600'
+        if val <= 7:
+            return 'background-color: rgba(255,193,7,0.20); color: #664d03; font-weight:600'
+        return 'background-color: rgba(220,53,69,0.15); color: #58151c; font-weight:600'
+
+    def color_adm(val):
+        if not isinstance(val, (int, float)) or val == 0:
+            return ''
+        if val <= 3:
+            return 'background-color: rgba(25,135,84,0.15); color: #0a3622; font-weight:600'
+        if val <= 7:
+            return 'background-color: rgba(255,193,7,0.20); color: #664d03; font-weight:600'
+        return 'background-color: rgba(220,53,69,0.15); color: #58151c; font-weight:600'
+
+    def color_cga(val):
+        if not isinstance(val, (int, float)) or val == 0:
+            return ''
+        if val <= 5:
+            return 'background-color: rgba(25,135,84,0.15); color: #0a3622; font-weight:600'
+        return 'background-color: rgba(220,53,69,0.15); color: #58151c; font-weight:600'
+
     total_filas = len(df_show)
     page_size = 500
     if total_filas > page_size:
@@ -844,56 +946,6 @@ def vista_scorecard_v1():
         "Leyenda días — TRF/ADM: verde ≤3d · naranja ≤7d · rojo >7d | "
         "CGA: verde ≤5d · rojo >5d"
     )
-
-    # ── Exportaciones ──
-    st.divider()
-    ex1, ex2 = st.columns(2)
-
-    with ex1:
-        buf_xl = io.BytesIO()
-        df_show.to_excel(buf_xl, index=False, engine="openpyxl")
-        buf_xl.seek(0)
-        st.download_button(
-            label="📥 Descargar Excel",
-            data=buf_xl,
-            file_name=f"scorecard_v1_{date.today().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
-
-    with ex2:
-        # PDF: siempre las 3 etapas activas; respeta filtro de sucursal/proforma
-        pdf_conds = [c for c in conds if "etapa_operacion" not in c]
-        pdf_where = ("WHERE " + " AND ".join(pdf_conds)) if pdf_conds else ""
-
-        @st.cache_data(ttl=120)
-        def _pdf(pw, fd):
-            df_pdf = query_pg(f"""
-                SELECT referencia, cliente, pedimento, sucursal, pedimento_pagado,
-                       fecha_pago, fecha_prim_sel, f_e_contabilidad, fecha_cierre_adm,
-                       dias_trf, dias_adm, dias_cga, etapa_operacion,
-                       folio_proforma, num_fac_cga
-                FROM mv_scorecard_v1_activo
-                {pw}
-                ORDER BY sucursal,
-                         CASE etapa_operacion
-                             WHEN 'EN TRAFICO'     THEN 1
-                             WHEN 'ADMINISTRATIVO' THEN 2
-                             WHEN 'CIERRE'         THEN 3
-                             ELSE 4
-                         END,
-                         dias_adm DESC
-            """)
-            return _pdf_scorecard_v1(df_pdf, etapa_map, total_general, fd)
-
-        pdf_bytes = _pdf(pdf_where, filtros_desc)
-        st.download_button(
-            label="📄 Descargar PDF",
-            data=pdf_bytes,
-            file_name=f"scorecard_v1_{date.today().strftime('%Y%m%d')}.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
 
 
 # ══════════════════════════════════════════════════════════════════════
