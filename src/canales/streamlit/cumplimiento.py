@@ -86,13 +86,17 @@ def _cargar_raw(f_ini: date, f_fin: date, tipo_op: str,
     if patentes_sel and "TODAS" not in patentes_sel:
         condiciones = []
         for item in patentes_sel:
-            if " - " in item:
-                # formato "3740 - AEROPUERTO CD. DE MEXICO, D.F."
+            if "|" in item:
+                # formato "3740|AEROPUERTO CD. DE MEXICO, D.F." (desde _patentes_disponibles_pg)
+                pat, adu = item.split("|", 1)
+                adu_esc = adu.replace("'", "''")
+                condiciones.append(f"(patente = '{pat.strip()}' AND aduana = '{adu_esc}')")
+            elif " - " in item:
+                # fallback para formato legacy "3740 - AEROPUERTO..."
                 pat, adu = item.split(" - ", 1)
                 adu_esc = adu.replace("'", "''")
                 condiciones.append(f"(patente = '{pat.strip()}' AND aduana = '{adu_esc}')")
             elif item.strip():
-                # solo patente sin aduana
                 pat_esc = item.strip().replace("'", "''")
                 condiciones.append(f"patente = '{pat_esc}'")
         if condiciones:
@@ -168,7 +172,8 @@ _ASSETS = os.path.join(os.path.dirname(__file__), "../../../assets")
 
 def _generar_pdf(df: pd.DataFrame, tipo_rep: str, tipo_op: str,
                  f_ini: date, f_fin: date,
-                 fig_bar=None, fig_pie=None) -> bytes:
+                 fig_bar=None, fig_pie=None,
+                 patentes_sel: list | None = None) -> bytes:
     from fpdf import FPDF
 
     # ── Exportar graficas: kaleido -> matplotlib fallback ─────────────────────
@@ -277,30 +282,64 @@ def _generar_pdf(df: pd.DataFrame, tipo_rep: str, tipo_op: str,
     cumplidas = (df["Cumple"] == "SI CUMPLE").sum()
     pct       = cumplidas / total * 100 if total > 0 else 0
 
-    # ── Pagina 1: titulo + subtitulo + KPIs + graficas ────────────────────────
+    # ── Pagina 1: titulo + metadata + KPIs + graficas ────────────────────────
     pdf.add_page()
     pdf.set_y(34)
-    pdf.set_font("DejaVu", "B", 16)
+
+    # Título principal
+    pdf.set_font("DejaVu", "B", 18)
     pdf.set_text_color(24, 43, 73)
-    pdf.cell(0, 10, "REPORTE DE CUMPLIMIENTO", 0, 1, "C")
-    pdf.set_font("DejaVu", "B", 11)
-    pdf.set_text_color(26, 115, 232)
-    tipo_rep_clean = tipo_rep.replace("Reporte ", "").upper()
-    pdf.cell(0, 7, f"{tipo_rep_clean} — {tipo_op.upper()}", 0, 1, "C")
+    pdf.cell(0, 12, "REPORTE DE CUMPLIMIENTO", 0, 1, "C")
+    pdf.ln(2)
+
+    # Parámetros centrados
     pdf.set_font("DejaVu", "", 9)
     pdf.set_text_color(80, 80, 80)
-    pdf.cell(0, 5, f"PARAMETROS: {params_txt} | Rango: {f_ini} -> {f_fin}", 0, 1, "C")
+    pdf.cell(0, 5, f"PARÁMETROS: {params_txt}", 0, 1, "C")
     pdf.cell(0, 5,
-             f"Generado el {datetime.now().strftime('%d/%m/%Y a las %H:%M')}",
+             f"Rango: {f_ini.strftime('%d/%m/%Y')} → {f_fin.strftime('%d/%m/%Y')}",
              0, 1, "C")
-    pdf.set_text_color(0, 0, 0)
+    pdf.ln(6)
+
+    # Línea separadora
+    pdf.set_draw_color(200, 210, 230)
+    pdf.line(15, pdf.get_y(), 282, pdf.get_y())
+    pdf.ln(5)
+
+    # Bloque metadata izquierda
+    tipo_rep_clean = tipo_rep.replace("Reporte ", "").upper()
+    for label, valor in [
+        ("Reporte:",          f"{tipo_rep_clean} — {tipo_op.upper()}"),
+        ("Fecha de reporte:", datetime.now().strftime("%d/%m/%Y %H:%M")),
+        ("Sucursales:",       (
+            "TODAS" if not patentes_sel or patentes_sel == ["TODAS"]
+            else " | ".join(
+                s.split("|")[1] if "|" in s
+                else (s.split(" - ", 1)[1] if " - " in s else s)
+                for s in patentes_sel
+            )
+        )),
+    ]:
+        pdf.set_font("DejaVu", "B", 9)
+        pdf.set_text_color(24, 43, 73)
+        pdf.cell(40, 5, label, 0, 0, "L")
+        pdf.set_font("DejaVu", "", 9)
+        pdf.set_text_color(0, 0, 0)
+        pdf.cell(0, 5, valor, 0, 1, "L")
+
+    pdf.ln(5)
+    pdf.set_draw_color(200, 210, 230)
+    pdf.line(15, pdf.get_y(), 282, pdf.get_y())
     pdf.ln(4)
 
+    # KPIs en fila con fondo azul
     pdf.set_font("DejaVu", "B", 10)
-    pdf.set_fill_color(245, 245, 245)
+    pdf.set_fill_color(26, 115, 232)
+    pdf.set_text_color(255, 255, 255)
     for lbl in [f"TOTAL: {total}", f"CUMPLIDAS: {cumplidas}",
                 f"NO CUMPLIDAS: {total - cumplidas}", f"% CUMPLIMIENTO: {pct:.1f}%"]:
         pdf.cell(60, 10, lbl, 1, 0, "C", True)
+    pdf.set_text_color(0, 0, 0)
     pdf.ln()
     pdf.ln(4)
 
@@ -609,11 +648,11 @@ def render_cumplimiento():
     pct          = cumplidas / total * 100 if total > 0 else 0
 
     # Deltas: mes actual del rango vs mes anterior
-    mes_actual = f_fin.strftime("%Y-%m")
-    if f_ini.month == 1:
-        mes_ant = date(f_ini.year - 1, 12, 1).strftime("%Y-%m")
+    mes_actual = fecha_fin.strftime("%Y-%m")
+    if fecha_ini.month == 1:
+        mes_ant = date(fecha_ini.year - 1, 12, 1).strftime("%Y-%m")
     else:
-        mes_ant = date(f_ini.year, f_ini.month - 1, 1).strftime("%Y-%m")
+        mes_ant = date(fecha_ini.year, fecha_ini.month - 1, 1).strftime("%Y-%m")
 
     df["Mes_str"] = pd.to_datetime(df["fecha_pago"]).dt.strftime("%Y-%m")
     df_act = df[df["Mes_str"] == mes_actual]
@@ -693,7 +732,8 @@ def render_cumplimiento():
     col_pdf, col_xls = st.columns(2)
     with col_pdf:
         pdf_bytes = _generar_pdf(df, tipo_rep, tipo_op, fecha_ini, fecha_fin,
-                                 fig_bar=fig_bar, fig_pie=fig_pie)
+                                 fig_bar=fig_bar, fig_pie=fig_pie,
+                                 patentes_sel=patentes_sel)
         st.download_button(
             "Descargar PDF",
             pdf_bytes,

@@ -15,9 +15,9 @@ Repo GitHub: https://github.com/thdzr97/reporteador_maestro (rama main protegida
 - OS: Debian 12, usuario: ntadmin (sudo con password)
 - Python: 3.13.5 | PostgreSQL: 17.6 en 127.0.0.1:5432
 - Ruta del proyecto: /var/www/html/ocmx/reporteador-maestro/
-- Venv: .venv | Puerto: 8503 | Logs: logs/
+- Venv: .venv | Puerto: 8502 | Logs: logs/
 - Arrancar todo: bash scripts/start.sh
-- Proyecto hermano (NO tocar): /var/www/html/ocmx/reporte-sir/ en puerto 8502
+- Proyecto hermano (NO tocar): /var/www/html/ocmx/reporte-sir/ en puerto 8504
 
 ---
 
@@ -164,9 +164,9 @@ Metas por tipo de transporte (config.py de reporte-sir):
 
 ---
 
-## Dashboard (Streamlit puerto 8503)
+## Dashboard (Streamlit puerto 8502)
 
-URL: http://192.168.5.232:8503/reporteador
+URL: http://192.168.5.232:8502/reportes
 Tema: .streamlit/config.toml (oscuro, Navy #1E2761, Ice #CADCFC)
 Navegación: session_state (un solo app.py, sin pages/)
 

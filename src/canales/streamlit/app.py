@@ -76,7 +76,7 @@ def vista_inicio():
 .rm-badge.live { background: rgba(25,135,84,0.1); color: #198754; border: 1px solid rgba(25,135,84,0.3); }
 .rm-badge.soon { background: #f8f9fa; color: #6c757d; border: 1px solid #dee2e6; }
 #MainMenu { visibility: hidden; }
-footer    { visibility: hidden; }
+footer { visibility: hidden; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -530,6 +530,10 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
         _draw_col_headers()
 
     df_act = df_det[df_det["etapa_operacion"].isin(COLORES)].copy()
+    # Excluir CIERRE con dias_cga > 5 (igual que la vista web)
+    if "etapa_operacion" in df_act.columns and "dias_cga" in df_act.columns:
+        df_act = df_act[~((df_act["etapa_operacion"] == "CIERRE") &
+                          (df_act["dias_cga"] > 5))]
     if df_act.empty:
         pdf.set_font("DejaVu", "", 10)
         pdf.cell(0, 10, "Sin registros activos con los filtros seleccionados.",
@@ -624,6 +628,8 @@ def vista_scorecard_v1():
     if etapas_sel and len(etapas_sel) < len(ETAPAS):
         s = ", ".join([f"'{x}'" for x in etapas_sel])
         conds.append(f"etapa_operacion IN ({s})")
+    # Ocultar CIERRE con dias_cga > 5 hasta que se defina la Etapa 4
+    conds.append("NOT (etapa_operacion = 'CIERRE' AND dias_cga > 5)")
     where = ("WHERE " + " AND ".join(conds)) if conds else ""
 
     filtros_desc = (
@@ -851,8 +857,7 @@ def vista_scorecard_v1():
     )
 
     st.caption(
-        "Leyenda días — TRF/ADM: verde ≤3d · naranja ≤7d · rojo >7d | "
-        "CGA: verde ≤5d · rojo >5d"
+        "Leyenda días — TRF/ADM: verde ≤3d · naranja ≤7d · rojo >7d"
     )
 
 

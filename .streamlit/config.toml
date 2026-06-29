@@ -1,12 +1,10 @@
+[server]
+port = 8502
+address = "0.0.0.0"
+baseUrlPath = "reportes"
+
+[client]
+toolbarMode = "viewer"
+
 [theme]
 base = "light"
-primaryColor = "#1a73e8"
-backgroundColor = "#FFFFFF"
-secondaryBackgroundColor = "#f8f9fa"
-textColor = "#212529"
-font = "sans serif"
-
-[server]
-address = "0.0.0.0"
-port = 8503
-baseUrlPath = "reporteador"
