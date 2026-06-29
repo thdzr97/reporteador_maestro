@@ -5,8 +5,12 @@ import sys
 import os
 import io
 import tempfile
+import hashlib
+import logging
 from datetime import date, datetime
 from io import BytesIO
+
+_logger = logging.getLogger(__name__)
 
 import pandas as pd
 import plotly.express as px
@@ -24,8 +28,33 @@ from utils.calculos import (
 
 # ── conexión PostgreSQL ───────────────────────────────────────────────────────
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../.."))
-from src.etl.conexion import get_pg_engine
+from src.etl.conexion import get_pg_engine, query_pg
 from sqlalchemy import text as sql_text
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PATENTES DISPONIBLES (sabana_pedimentos)
+# ══════════════════════════════════════════════════════════════════════════════
+
+@st.cache_data(ttl=600)
+def _patentes_disponibles_pg() -> list[dict]:
+    """Carga combinaciones únicas patente/aduana_despacho desde sabana_pedimentos."""
+    try:
+        df = query_pg("""
+            SELECT DISTINCT patente, aduana_despacho
+            FROM sabana_pedimentos
+            WHERE patente IS NOT NULL AND patente != ''
+              AND aduana_despacho IS NOT NULL AND aduana_despacho != ''
+            ORDER BY patente, aduana_despacho
+        """)
+        opciones = [{"valor": "TODAS", "display": "🌍 TODAS"}]
+        for _, row in df.iterrows():
+            pat = str(row["patente"]).strip()
+            adu = str(row["aduana_despacho"]).strip()
+            opciones.append({"valor": f"{pat}|{adu}", "display": f"{pat} - {adu}"})
+        return opciones
+    except Exception:
+        return [{"valor": "TODAS", "display": "🌍 TODAS"}]
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -33,8 +62,9 @@ from sqlalchemy import text as sql_text
 # ══════════════════════════════════════════════════════════════════════════════
 
 @st.cache_data(ttl=300)
-def _cargar_raw(f_ini: date, f_fin: date, tipo_op: str) -> pd.DataFrame:
-    """Query PostgreSQL con parametros bind. Filtra tipo_op en SQL; el resto en pandas."""
+def _cargar_raw(f_ini: date, f_fin: date, tipo_op: str,
+                patentes_sel: tuple = ("TODAS",)) -> pd.DataFrame:
+    """Query PostgreSQL con parametros bind. Filtra tipo_op y patente/aduana en SQL."""
     sql = """
         SELECT
             referencia, pedimento, patente, aduana,
@@ -46,18 +76,28 @@ def _cargar_raw(f_ini: date, f_fin: date, tipo_op: str) -> pd.DataFrame:
         WHERE pedimento_fecha_pago BETWEEN :f_ini AND :f_fin
     """
     params: dict = {"f_ini": f_ini, "f_fin": f_fin}
-    if tipo_op == "Importacion":
+    if tipo_op in ("Importacion", "Importación"):
         sql += " AND tipo_operacion = :tipo_op"
         params["tipo_op"] = "I"
-    elif tipo_op == "Exportacion":
+    elif tipo_op in ("Exportacion", "Exportación"):
         sql += " AND tipo_operacion = :tipo_op"
         params["tipo_op"] = "E"
-    elif tipo_op == "Importación":
-        sql += " AND tipo_operacion = :tipo_op"
-        params["tipo_op"] = "I"
-    elif tipo_op == "Exportación":
-        sql += " AND tipo_operacion = :tipo_op"
-        params["tipo_op"] = "E"
+
+    if patentes_sel and "TODAS" not in patentes_sel:
+        condiciones = []
+        for item in patentes_sel:
+            if " - " in item:
+                # formato "3740 - AEROPUERTO CD. DE MEXICO, D.F."
+                pat, adu = item.split(" - ", 1)
+                adu_esc = adu.replace("'", "''")
+                condiciones.append(f"(patente = '{pat.strip()}' AND aduana = '{adu_esc}')")
+            elif item.strip():
+                # solo patente sin aduana
+                pat_esc = item.strip().replace("'", "''")
+                condiciones.append(f"patente = '{pat_esc}'")
+        if condiciones:
+            sql += " AND (" + " OR ".join(condiciones) + ")"
+
     sql += " ORDER BY pedimento_fecha_pago DESC"
 
     try:
@@ -150,9 +190,12 @@ def _generar_pdf(df: pd.DataFrame, tipo_rep: str, tipo_op: str,
         clr_map = {"SI CUMPLE": "#2ecc71", "NO CUMPLE": "#e74c3c"}
         cols = [c for c in ["SI CUMPLE", "NO CUMPLE"] if c in grp.columns]
         grp[cols].plot(kind="bar", stacked=True, ax=ax, color=[clr_map[c] for c in cols])
-        ax.set_title("Cumplimiento por Mes")
-        ax.set_xlabel("Mes")
-        ax.set_ylabel("Operaciones")
+        for container in ax.containers:
+            ax.bar_label(container, fontsize=13, label_type="center", fmt="%g")
+        ax.set_title("Cumplimiento por Mes", fontsize=14, fontweight="bold")
+        ax.set_xlabel("Mes", fontsize=11)
+        ax.set_ylabel("Operaciones", fontsize=11)
+        ax.tick_params(axis="both", labelsize=11)
         plt.tight_layout()
         buf = io.BytesIO()
         plt.savefig(buf, format="png", dpi=120)
@@ -166,8 +209,11 @@ def _generar_pdf(df: pd.DataFrame, tipo_rep: str, tipo_op: str,
         fig, ax = plt.subplots(figsize=(5, 4))
         vc = df["Cumple"].value_counts()
         clrs = [("#2ecc71" if c == "SI CUMPLE" else "#e74c3c") for c in vc.index]
-        ax.pie(vc.values, labels=vc.index, colors=clrs, autopct="%1.1f%%")
-        ax.set_title("Proporcion Total")
+        ax.pie(vc.values, labels=vc.index, colors=clrs,
+               autopct="%1.1f%%",
+               textprops={"fontsize": 13},
+               pctdistance=0.75)
+        ax.set_title("Proporción Total", fontsize=14, fontweight="bold")
         plt.tight_layout()
         buf = io.BytesIO()
         plt.savefig(buf, format="png", dpi=120)
@@ -436,33 +482,26 @@ def render_cumplimiento():
         st.button("← Volver al menu", on_click=_ir_inicio, use_container_width=True)
         st.header("Filtros")
 
-        # 1. Patente / Aduana — primero para filtrar la lista de datos rápido
+        # 1. Patente / Aduana
         hoy = date.today()
         primer_dia = date(hoy.year, hoy.month, 1)
 
-        @st.cache_data(ttl=600)
-        def _patentes_disponibles(f1: date, f2: date) -> list[str]:
-            try:
-                with get_pg_engine().connect() as conn:
-                    rows = conn.execute(sql_text(
-                        "SELECT DISTINCT patente, aduana FROM cumplimiento_pedimentos "
-                        "WHERE pedimento_fecha_pago BETWEEN :f1 AND :f2 "
-                        "AND patente IS NOT NULL ORDER BY patente, aduana"),
-                        {"f1": f1, "f2": f2},
-                    ).fetchall()
-                return [f"{r[0]} - {r[1]}" if r[1] else str(r[0]) for r in rows]
-            except Exception:
-                return []
+        opciones = _patentes_disponibles_pg()
+        opciones_display = [o["display"] for o in opciones]
+        opciones_valores = [o["valor"]   for o in opciones]
 
-        opciones_pat = ["TODAS"] + _patentes_disponibles(primer_dia, hoy)
-        patentes_sel = st.multiselect(
+        sel_display = st.multiselect(
             "Patente / Aduana",
-            options=opciones_pat,
-            default=["TODAS"],
+            options=opciones_display,
+            default=["🌍 TODAS"],
             key="cum_patentes",
         )
-        if any("TODAS" in p for p in patentes_sel):
+
+        if not sel_display or any("TODAS" in s for s in sel_display):
             patentes_sel = ["TODAS"]
+        else:
+            patentes_sel = [opciones_valores[opciones_display.index(s)]
+                            for s in sel_display]
 
         st.divider()
 
@@ -491,28 +530,63 @@ def render_cumplimiento():
             "Cliente (contiene)", placeholder="Ej: HIROTEC, SADABU", key="cum_cli")
 
         st.markdown("---")
-        st.sidebar.caption(
-            "Filtros aplicados en ETL:\n"
-            "Solo pedimentos pagados · "
-            "Excluye V1/R1/V5/F4/F5/RC"
+        st.caption(
+            "Filtros ETL: Solo pagados · "
+            "Excluye V1/R1/V5/F4/F5/RC/A3"
+        )
+        generar = st.button(
+            "🔍 Generar Reporte",
+            type="primary",
+            use_container_width=True,
         )
 
+    # ── Hash de filtros: limpiar session_state si cambiaron ──────────────────
+    filtros_hash = hashlib.md5(
+        f"{sorted(patentes_sel)}{tipo_rep}{tipo_op}{fecha_ini}{fecha_fin}{cliente_filtro}".encode()
+    ).hexdigest()
+
+    if st.session_state.get("filtros_hash") != filtros_hash:
+        st.session_state.pop("df_cumplimiento", None)
+        st.session_state.pop("params_cumplimiento", None)
+
+    if "df_cumplimiento" in st.session_state:
+        st.sidebar.info("📊 Reporte generado. Cambia filtros y presiona Generar para actualizar.")
+
     # ── Carga y procesamiento ─────────────────────────────────────────────────
-    df_raw = _cargar_raw(fecha_ini, fecha_fin, tipo_op)
-    if df_raw.empty:
-        st.warning("Sin datos para el rango seleccionado.")
-        return
-
-    df = _procesar(df_raw.copy(), tipo_rep)
-
-    # Filtros pandas
-    if patentes_sel and "TODAS" not in patentes_sel:
-        df = df[df["patente_aduana"].isin(patentes_sel)]
-    if cliente_filtro.strip():
-        df = df[df["cliente"].str.contains(cliente_filtro.strip(), case=False, na=False)]
-
-    if df.empty:
-        st.warning("Sin registros con los filtros aplicados.")
+    if generar or "df_cumplimiento" in st.session_state:
+        if generar:
+            _logger.info(
+                f"[CUMPLIMIENTO] Generando — patentes_sel={patentes_sel} "
+                f"tipo_op={tipo_op} tipo_rep={tipo_rep} {fecha_ini}→{fecha_fin} "
+                f"cliente='{cliente_filtro}'"
+            )
+            df_raw = _cargar_raw(fecha_ini, fecha_fin, tipo_op, tuple(patentes_sel))
+            _logger.info(f"[CUMPLIMIENTO] _cargar_raw devolvió {len(df_raw)} filas")
+            if df_raw.empty:
+                st.warning("Sin datos para el rango seleccionado.")
+                st.session_state.pop("df_cumplimiento", None)
+                return
+            df = _procesar(df_raw.copy(), tipo_rep)
+            if cliente_filtro.strip():
+                df = df[df["cliente"].str.contains(
+                    cliente_filtro.strip(), case=False, na=False)]
+            _logger.info(f"[CUMPLIMIENTO] df final: {len(df)} filas tras filtros")
+            st.session_state["df_cumplimiento"] = df
+            st.session_state["filtros_hash"]    = filtros_hash
+            st.session_state["params_cumplimiento"] = {
+                "tipo_rep": tipo_rep, "tipo_op": tipo_op,
+                "f_ini": fecha_ini, "f_fin": fecha_fin,
+            }
+        df     = st.session_state.get("df_cumplimiento", pd.DataFrame())
+        params = st.session_state.get("params_cumplimiento", {})
+        tipo_rep  = params.get("tipo_rep",  tipo_rep)
+        tipo_op   = params.get("tipo_op",   tipo_op)
+        fecha_ini = params.get("f_ini", fecha_ini)
+        fecha_fin = params.get("f_fin", fecha_fin)
+        if df.empty:
+            st.warning("Sin registros con los filtros aplicados.")
+            return
+    else:
         return
 
     # ── Encabezado ────────────────────────────────────────────────────────────
@@ -534,11 +608,39 @@ def render_cumplimiento():
     no_cumplidas = total - cumplidas
     pct          = cumplidas / total * 100 if total > 0 else 0
 
+    # Deltas: mes actual del rango vs mes anterior
+    mes_actual = f_fin.strftime("%Y-%m")
+    if f_ini.month == 1:
+        mes_ant = date(f_ini.year - 1, 12, 1).strftime("%Y-%m")
+    else:
+        mes_ant = date(f_ini.year, f_ini.month - 1, 1).strftime("%Y-%m")
+
+    df["Mes_str"] = pd.to_datetime(df["fecha_pago"]).dt.strftime("%Y-%m")
+    df_act = df[df["Mes_str"] == mes_actual]
+    df_ant = df[df["Mes_str"] == mes_ant]
+
+    def _pct_cumple(d):
+        return round((d["Cumple"] == "SI CUMPLE").sum() / len(d) * 100, 1) if len(d) > 0 else None
+
+    pct_act = _pct_cumple(df_act)
+    pct_ant = _pct_cumple(df_ant)
+    total_ant  = len(df_ant) if len(df_ant) > 0 else None
+    cumple_ant = int((df_ant["Cumple"] == "SI CUMPLE").sum()) if len(df_ant) > 0 else None
+
+    delta_pct = (f"{round(pct_act - pct_ant, 1):+.1f}% vs mes anterior"
+                 if pct_act is not None and pct_ant is not None else None)
+
     c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Total Operaciones", f"{total:,}")
-    c2.metric("Cumplidas",          f"{cumplidas:,}")
-    c3.metric("No Cumplidas",       f"{no_cumplidas:,}")
-    c4.metric("% Cumplimiento",     f"{pct:.1f}%")
+    c1.metric("📋 Total Operaciones", f"{total:,}",
+              delta=f"{total - total_ant:+d} vs mes anterior" if total_ant else None)
+    c2.metric("✅ Cumplidas", f"{cumplidas:,}",
+              delta=f"{cumplidas - cumple_ant:+d} vs mes anterior" if cumple_ant else None)
+    c3.metric("❌ No Cumplidas", f"{no_cumplidas:,}",
+              delta=(f"{no_cumplidas - (total_ant - cumple_ant):+d} vs mes anterior"
+                     if total_ant else None),
+              delta_color="inverse")
+    c4.metric("🎯 % Cumplimiento", f"{pct:.1f}%",
+              delta=delta_pct, delta_color="normal")
 
     st.divider()
 
