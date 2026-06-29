@@ -40,11 +40,12 @@ def vista_inicio():
 <style>
 .main .block-container { padding-top: 0 !important; max-width: 1200px; }
 .rm-header {
-    background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
-    padding: 48px 40px;
-    border-radius: 0 0 24px 24px;
-    margin-bottom: 32px;
     text-align: center;
+    padding: 15px;
+    background: linear-gradient(135deg, #1a73e8 0%, #0d47a1 100%);
+    border-radius: 15px;
+    margin-bottom: 30px;
+    color: white;
 }
 .rm-header h1 { color: white; font-size: 2rem; font-weight: 700; margin: 0 0 6px 0; }
 .rm-header p  { color: rgba(255,255,255,0.85); font-size: 1rem; margin: 0; }
@@ -89,16 +90,25 @@ footer    { visibility: hidden; }
         st.markdown(f"""
 <div class="rm-header">
     <img src="data:image/png;base64,{logo_b64}"
-         style="height:60px; margin-bottom:12px; filter:brightness(0) invert(1);">
-    <h1>OCAMPO GRUPO ADUANAL</h1>
-    <p>Reporteador Maestro · Área de Nuevas Tecnologías</p>
+         style="height:50px; margin-bottom:8px;
+                filter:brightness(0) invert(1);">
+    <h2 style="margin:0; color:white; font-size:1.6rem; font-weight:700;">
+        OCAMPO GRUPO ADUANAL
+    </h2>
+    <p style="margin:0; opacity:0.85; font-size:0.95rem;">
+        Reporteador Maestro · Área de Nuevas Tecnologías
+    </p>
 </div>
 """, unsafe_allow_html=True)
     else:
         st.markdown("""
 <div class="rm-header">
-    <h1>🏛️ OCAMPO GRUPO ADUANAL</h1>
-    <p>Reporteador Maestro · Área de Nuevas Tecnologías</p>
+    <h2 style="margin:0; color:white; font-size:1.6rem; font-weight:700;">
+        🏛️ OCAMPO GRUPO ADUANAL
+    </h2>
+    <p style="margin:0; opacity:0.85; font-size:0.95rem;">
+        Reporteador Maestro · Área de Nuevas Tecnologías
+    </p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -107,9 +117,9 @@ footer    { visibility: hidden; }
 
     REPORTES = [
         {
-            "icon": "✅", "titulo": "Dashboard de Cumplimiento",
+            "icon": "✅", "titulo": "Reporte de Cumplimiento",
             "desc": "Indicadores operativos y administrativos por aduana, tipo de operación y rango de fechas.",
-            "live": True, "vista": "cumplimiento", "btn": "Ver Dashboard",
+            "live": True, "vista": "cumplimiento", "btn": "Ver Reporte",
         },
         {
             "icon": "📋", "titulo": "Score Card",
@@ -171,109 +181,7 @@ footer    { visibility: hidden; }
 # ══════════════════════════════════════════════════════════════════════
 # VISTA: CUMPLIMIENTO
 # ══════════════════════════════════════════════════════════════════════
-def vista_cumplimiento():
-    st.sidebar.button("← Volver al menú", on_click=ir_a, args=("inicio",))
-    st.title("Dashboard de Cumplimiento")
-    st.caption("Fuente: data mart PostgreSQL (ETL desde SIRADMIN)")
-    st.sidebar.header("Filtros")
-
-    hoy = date.today()
-    primer_dia_mes = hoy.replace(day=1)
-    col_f1, col_f2 = st.sidebar.columns(2)
-    with col_f1:
-        fecha_inicio = st.date_input("Desde", value=primer_dia_mes, key="cum_f1")
-    with col_f2:
-        fecha_fin = st.date_input("Hasta", value=hoy, key="cum_f2")
-
-    tipo_reporte = st.sidebar.selectbox(
-        "Tipo de reporte", ["Reporte Operativo", "Reporte Administrativo"], key="cum_tr")
-    tipo_operacion = st.sidebar.selectbox(
-        "Tipo de operación", ["Todos", "Importación", "Exportación"], key="cum_to")
-    cliente_filtro = st.sidebar.text_input("Cliente (contiene)", "", key="cum_cli")
-
-    @st.cache_data(ttl=120)
-    def cargar_cumplimiento(f_ini, f_fin):
-        return query_pg(f"""
-            SELECT * FROM cumplimiento_pedimentos
-            WHERE pedimento_fecha_pago >= '{f_ini}' AND pedimento_fecha_pago <= '{f_fin}'
-        """)
-
-    df = cargar_cumplimiento(fecha_inicio, fecha_fin)
-    if df.empty:
-        st.warning("Sin datos para el rango seleccionado.")
-        return
-
-    df["patente_aduana"] = df.apply(
-        lambda r: f"{r['patente']} | {r['aduana']}"
-        if pd.notna(r["patente"]) and pd.notna(r["aduana"]) else "SIN PATENTE", axis=1)
-
-    opciones_patente = ["TODAS"] + sorted(df["patente_aduana"].unique().tolist())
-    patentes_sel = st.sidebar.multiselect("Patente / Aduana", opciones_patente, default=["TODAS"], key="cum_pat")
-
-    if tipo_operacion == "Importación":
-        df = df[df["tipo_operacion"] == "I"]
-    elif tipo_operacion == "Exportación":
-        df = df[df["tipo_operacion"] == "E"]
-    if patentes_sel and "TODAS" not in patentes_sel:
-        df = df[df["patente_aduana"].isin(patentes_sel)]
-    if cliente_filtro.strip():
-        df = df[df["cliente"].str.contains(cliente_filtro, case=False, na=False)]
-    if df.empty:
-        st.warning("Sin datos después de aplicar filtros.")
-        return
-
-    for col in ["fecha_revalidacion", "fecha_arribo", "fecha_pago",
-                 "pedimento_fecha_pago", "fecha_cuenta_gastos", "fecha_contabilidad"]:
-        if col in df.columns:
-            df[col] = pd.to_datetime(df[col], errors="coerce")
-
-    df["transporte_real"] = df.apply(
-        lambda r: clasificar_transporte(r["medio_transporte"], r["contenedores"], r["tipo_contenedor"]), axis=1)
-
-    if tipo_reporte == "Reporte Operativo":
-        df["param_fecha_inicio"] = df.apply(
-            lambda r: obtener_fecha_mas_reciente(r["fecha_revalidacion"], r["fecha_arribo"]), axis=1)
-        df["param_fecha_fin"] = df["fecha_pago"]
-    else:
-        df["param_fecha_inicio"] = df["fecha_contabilidad"]
-        df["param_fecha_fin"] = df["fecha_cuenta_gastos"]
-
-    df["dias_transcurridos"] = df.apply(
-        lambda r: dias_habiles_oga(r["param_fecha_inicio"], r["param_fecha_fin"]), axis=1)
-    df["meta_aplicada"] = df.apply(
-        lambda r: meta_dinamica(
-            {"Transporte_Real": r["transporte_real"], "Tipo Operación": r["tipo_operacion"]},
-            tipo_reporte), axis=1)
-
-    df = df.dropna(subset=["dias_transcurridos"])
-    df["dias_transcurridos"] = df["dias_transcurridos"].astype(int)
-    df["cumple"] = df.apply(
-        lambda r: "SI CUMPLE" if r["dias_transcurridos"] <= r["meta_aplicada"] else "NO CUMPLE", axis=1)
-
-    total = len(df)
-    cumplidos = len(df[df["cumple"] == "SI CUMPLE"])
-    pct = round(cumplidos * 100 / total, 1) if total > 0 else 0
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Total pedimentos", f"{total:,}")
-    c2.metric("Cumplidos", f"{cumplidos:,}")
-    c3.metric("% Cumplimiento", f"{pct}%")
-
-    st.subheader(f"Detalle — {tipo_reporte}")
-    df_display = df[["pedimento", "pedimento_fecha_pago", "aduana", "tipo_operacion",
-                      "cliente", "transporte_real", "dias_transcurridos", "meta_aplicada", "cumple"]].copy()
-    df_display.columns = ["Pedimento", "Fecha Pago", "Aduana", "Tipo Op",
-                           "Cliente", "Transporte", "Días", "Meta", "Cumplimiento"]
-    df_display = df_display.sort_values("Fecha Pago", ascending=False)
-
-    def color_cumple(val):
-        if val == "SI CUMPLE":
-            return "background-color: #d4edda; color: #155724"
-        return "background-color: #f8d7da; color: #721c24"
-
-    st.dataframe(df_display.style.map(color_cumple, subset=["Cumplimiento"]),
-                 use_container_width=True, height=600)
-    st.caption(f"Mostrando {len(df_display):,} pedimentos | Rango: {fecha_inicio} → {fecha_fin} | Reporte: {tipo_reporte}")
+from src.canales.streamlit.cumplimiento import render_cumplimiento
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -953,7 +861,7 @@ def vista_scorecard_v1():
 # ══════════════════════════════════════════════════════════════════════
 vista = st.session_state.vista
 if vista == "cumplimiento":
-    vista_cumplimiento()
+    render_cumplimiento()
 elif vista == "sabana":
     vista_sabana()
 elif vista == "scorecard":
