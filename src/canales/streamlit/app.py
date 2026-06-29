@@ -524,7 +524,7 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
         pdf.set_font("DejaVu", "B", 7)
         pdf.set_fill_color(*c["fill"])
         pdf.set_text_color(*c["text"])
-        label = f"  {etapa}" + (" (cont.)" if cont else "")
+        label = f"  {etapa}" + (" — continuación" if cont else "")
         pdf.cell(total_w, 6, label, border=0, fill=True, new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
         _draw_col_headers()
@@ -587,8 +587,8 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
                 (str(int(row.get("dias_trf", 0) or 0)),            9, "C"),
                 (str(int(row.get("dias_adm", 0) or 0)),            9, "C"),
                 (str(int(row.get("dias_cga", 0) or 0)),            9, "C"),
-                (str(row.get("folio_proforma",   "") or "")[:14], 22, "L"),
-                (str(row.get("num_fac_cga",      "") or "")[:14], 22, "L"),
+                ((str(row.get("folio_proforma", "") or "").strip() or "-")[:14], 22, "L"),
+                ((str(row.get("num_fac_cga",    "") or "").strip() or "-")[:14], 22, "L"),
             ]
             for txt, w, align in vals:
                 pdf.cell(w, 5.5, txt, border=1, align=align)
@@ -727,13 +727,13 @@ def vista_scorecard_v1():
                    folio_proforma, num_fac_cga
             FROM mv_scorecard_v1_activo
             {pw}
-            ORDER BY sucursal,
-                     CASE etapa_operacion
+            ORDER BY CASE etapa_operacion
                          WHEN 'EN TRAFICO'     THEN 1
                          WHEN 'ADMINISTRATIVO' THEN 2
                          WHEN 'CIERRE'         THEN 3
                          ELSE 4
                      END,
+                     sucursal,
                      dias_adm DESC
         """)
         return _pdf_scorecard_v1(df_pdf, etapa_map, total_general, fd)
@@ -777,21 +777,21 @@ def vista_scorecard_v1():
         return
 
     # ── Botones de descarga (encima de la tabla) ──
-    col_xls, col_pdf_btn = st.columns([1, 1])
-    with col_xls:
-        st.download_button(
-            label="📥 Descargar Excel",
-            data=buf_xl,
-            file_name=f"scorecard_v1_{date.today().strftime('%Y%m%d')}.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+    col_pdf_btn, col_xls = st.columns([1, 1])
     with col_pdf_btn:
         st.download_button(
             label="📄 Descargar PDF",
             data=pdf_bytes,
             file_name=f"scorecard_v1_{date.today().strftime('%Y%m%d')}.pdf",
             mime="application/pdf",
+            use_container_width=True,
+        )
+    with col_xls:
+        st.download_button(
+            label="📥 Descargar Excel",
+            data=buf_xl,
+            file_name=f"scorecard_v1_{date.today().strftime('%Y%m%d')}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             use_container_width=True,
         )
 
@@ -850,8 +850,10 @@ def vista_scorecard_v1():
             .map(color_trf,  subset=["Dias TRF"])
             .map(color_adm,  subset=["Dias ADM"])
             .map(color_cga,  subset=["Dias CGA"])
-            .format({"Dias TRF": "{:.0f}", "Dias ADM": "{:.0f}", "Dias CGA": "{:.0f}"},
-                    na_rep="—"),
+            .format({"Dias TRF": "{:.0f}", "Dias ADM": "{:.0f}", "Dias CGA": "{:.0f}",
+                     "Proforma": lambda x: "-" if str(x) in ("nan", "None", "") else str(x),
+                     "Factura":  lambda x: "-" if str(x) in ("nan", "None", "") else str(x)},
+                    na_rep="-"),
         use_container_width=True,
         height=600,
     )
