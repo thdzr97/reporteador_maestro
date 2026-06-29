@@ -457,12 +457,12 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
         "CIERRE":         {"text": (39, 174, 96),    "fill": (8, 38, 16)},
     }
     COLS_PDF = [
-        ("Ref",       26), ("Cliente",  50), ("Pedimento", 22), ("P",        8),
-        ("F.Pago",    18), ("SelAle",   18), ("F_E Cont",  18), ("F.Cierre", 18),
-        ("TRF",        9), ("ADM",       9), ("CGA",        9),
-        ("Proform",   22), ("Factura",  22),
+        ("Ref",       28), ("Cliente",  58), ("Pedimento", 23), ("P",        9),
+        ("F.Pago",    20), ("SelAle",   20), ("F_E Cont",  20), ("F.Cierre", 20),
+        ("TRF",       10), ("ADM",      10), ("CGA",       10),
+        ("Proform",   24), ("Factura",  25),
     ]
-    total_w = sum(w for _, w in COLS_PDF)  # 257mm
+    total_w = sum(w for _, w in COLS_PDF)  # 277mm
 
     resumen_pie = (
         f"EN TRAFICO: {etapa_map['EN TRAFICO']}  |  "
@@ -470,20 +470,123 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
         f"CIERRE: {etapa_map['CIERRE']}"
     )
 
+    LOGO_PATH = "/var/www/html/ocmx/reporteador-maestro/assets/OGA-Logo01.png"
+
+    # Parsear filtros_desc para metadata
+    def _parse_filtros(fd):
+        # formato real: "Suc: Veracruz, NLD | EN TRAFICO, CIERRE"
+        # o:            "Todas sucursales | EN TRAFICO, ADMINISTRATIVO, CIERRE"
+        partes = [p.strip() for p in fd.split("|")]
+        suc_raw = partes[0] if len(partes) > 0 else "Todas"
+        if suc_raw.startswith("Suc:"):
+            sucursales = suc_raw.replace("Suc:", "").strip()
+        else:
+            sucursales = "Todas"
+        etapas = partes[1].strip() if len(partes) > 1 else "Todas"
+        return sucursales, etapas
+
+    # Extraer variables de filtros para usarlas en header()
+    sucursales, etapas_desc = _parse_filtros(filtros_desc)
+
     class PDF(FPDF):
         def header(self):
-            self.set_font("DejaVu", "B", 14)
-            self.cell(0, 8, "BALANCED SCORECARD", align="C", new_x="LMARGIN", new_y="NEXT")
+            # 1. Patrón de puntos decorativo (fondo superior derecho)
+            self.set_draw_color(230, 230, 230)
+            self.set_fill_color(230, 230, 230)
+            for i in range(210, 280, 4):
+                for j in range(5, 25, 4):
+                    self.circle(i, j, 0.4, style="F")
+
+            # 2. Logo
+            try:
+                self.image(LOGO_PATH, x=4, y=3, h=26)
+            except:
+                pass
+
+            # 3. Título Principal
+            self.set_font("DejaVu", "B", 26)
+            self.set_text_color(13, 27, 60)
+            self.set_y(8)
+            self.cell(0, 10, "BALANCED SCORECARD", align="C")
+
+            # 4. Subtítulo con líneas verdes
+            self.set_font("DejaVu", "", 12)
+            sub = "OCAMPO GRUPO ADUANAL"
+            sub_w = self.get_string_width(sub)
+            center_x = 297 / 2
+            self.set_draw_color(34, 180, 80)
+            self.set_line_width(0.6)
+            self.line(center_x - (sub_w/2) - 15, 21, center_x - (sub_w/2) - 5, 21)
+            self.line(center_x + (sub_w/2) + 5, 21, center_x + (sub_w/2) + 15, 21)
+            self.set_text_color(30, 40, 90)
+            self.set_y(18)
+            self.set_x(center_x - (sub_w/2))
+            self.cell(sub_w, 6, sub, align="C")
+
+            # 5. Badge Superior Derecho
+            badge_w = 55
+            badge_h = 16
+            badge_x = 232
+            badge_y = 6
+            self.set_fill_color(13, 27, 60)
+            self.rect(badge_x, badge_y, badge_w, badge_h, style="F")
+            self.set_draw_color(34, 180, 80)
+            self.set_line_width(1)
+            self.rect(badge_x, badge_y, badge_w, badge_h, style="D")
+            # Ícono de barras
+            self.set_fill_color(255, 255, 255)
+            self.rect(badge_x + 6,   badge_y + 8, 1.5, 4, style="F")
+            self.rect(badge_x + 8.5, badge_y + 5, 1.5, 7, style="F")
+            self.rect(badge_x + 11,  badge_y + 7, 1.5, 5, style="F")
+            # Texto badge
+            self.set_text_color(255, 255, 255)
             self.set_font("DejaVu", "B", 10)
-            self.cell(0, 6, "OCAMPO GRUPO ADUANAL", align="C", new_x="LMARGIN", new_y="NEXT")
+            self.set_xy(badge_x + 18, badge_y + 3)
+            self.cell(30, 5, "REPORTE")
             self.set_font("DejaVu", "", 8)
-            self.cell(0, 5, f"Generado: {datetime.now().strftime('%d/%m/%Y %H:%M')}  |  {filtros_desc}",
-                      align="C", new_x="LMARGIN", new_y="NEXT")
-            self.ln(2)
+            self.set_xy(badge_x + 18, badge_y + 8)
+            self.cell(30, 5, "Balanced Scorecard")
+
+            # 6. Línea Separadora
+            self.set_draw_color(220, 220, 220)
+            self.set_line_width(0.4)
+            self.line(10, 31, 287, 31)
+
+            # 7. Metadata 4 columnas
+            gen_date = datetime.now().strftime("%d/%m/%Y %H:%M")
+            labels = ["Generado:", "Sucursal(es):", "Etapas:", "Total refs:"]
+            vals_meta = [gen_date, sucursales[:40], etapas_desc[:40], str(total_general)]
+            y_meta = 33
+            # col_x y col_w ajustados: Etapas tiene más espacio
+            col_x = [15, 75, 145, 255]
+            col_w = [55, 65, 105, 35]
+            self.set_text_color(130, 130, 130)
+            self.set_font("DejaVu", "", 8)
+            for i, lbl in enumerate(labels):
+                self.set_xy(col_x[i], y_meta)
+                self.cell(col_w[i], 4, lbl)
+            self.set_text_color(13, 27, 60)
+            self.set_font("DejaVu", "B", 9)
+            for i, val in enumerate(vals_meta):
+                self.set_xy(col_x[i], y_meta + 4)
+                self.set_font("DejaVu", "B", 8 if i == 2 else 9)
+                self.cell(col_w[i], 5, val)
+            self.set_draw_color(220, 220, 220)
+            self.set_line_width(0.3)
+            for x_pos in col_x[1:]:
+                self.line(x_pos - 5, y_meta, x_pos - 5, y_meta + 9)
+
+            # 8. Línea verde final
+            self.set_draw_color(34, 180, 80)
+            self.set_line_width(0.8)
+            self.line(10, 44, 287, 44)
+            self.set_text_color(0, 0, 0)
+            self.set_y(47)
 
         def footer(self):
             self.set_y(-14)
             self.set_font("DejaVu", "", 7)
+            self.set_text_color(100, 100, 100)
             self.cell(0, 5, resumen_pie, align="C", new_x="LMARGIN", new_y="NEXT")
             self.cell(0, 5,
                       f"Pág. {self.page_no()} — Reporteador Maestro · Nuevas Tecnologías",
@@ -511,13 +614,34 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
         pdf.set_text_color(0, 0, 0)
 
     def _draw_suc_header(suc, cont=False):
-        pdf.set_font("DejaVu", "B", 9)
-        pdf.set_fill_color(20, 25, 60)
-        pdf.set_text_color(202, 220, 252)
-        label = f"  SUCURSAL: {suc.upper()}" + (" (cont.)" if cont else "")
-        pdf.cell(total_w, 7, label, border=0, fill=True, new_x="LMARGIN", new_y="NEXT")
+        x_start = 10
+        y_start = pdf.get_y()
+        w = 277
+        h = 10
+        # Fondo azul marino
+        pdf.set_fill_color(13, 27, 60)
+        pdf.rect(x_start, y_start, w, h, style="F")
+        # Acentos diagonales esquina derecha
+        pdf.set_line_width(6)
+        pdf.set_draw_color(30, 90, 150)
+        pdf.line(x_start + w - 24, y_start + 1, x_start + w - 30, y_start + h - 1)
+        pdf.set_draw_color(34, 180, 80)
+        pdf.line(x_start + w - 10, y_start + 1, x_start + w - 16, y_start + h - 1)
+        # Línea verde base
+        pdf.set_draw_color(34, 180, 80)
+        pdf.set_line_width(1.2)
+        pdf.line(x_start, y_start + h, x_start + w, y_start + h)
+        # Texto
+        pdf.set_text_color(255, 255, 255)
+        pdf.set_font("DejaVu", "B", 10)
+        pdf.set_xy(x_start + 4, y_start + 2.5)
+        texto = f" SUCURSAL: {suc.upper()}"
+        if cont:
+            texto += " (cont.)"
+        pdf.cell(w - 50, 5, texto, align="L")
         pdf.set_text_color(0, 0, 0)
-        pdf.ln(1)
+        pdf.set_line_width(0.2)
+        pdf.set_y(y_start + h + 3)
 
     def _draw_etapa_header(etapa, cont=False):
         c = COLORES.get(etapa, {"text": (100, 100, 100), "fill": (20, 20, 20)})
@@ -575,20 +699,21 @@ def _pdf_scorecard_v1(df_det, etapa_map, total_general, filtros_desc):
 
             pagado = "SI" if row.get("pedimento_pagado") else "NO"
             pdf.set_font("DejaVu", "", 6.5)
+            _w = [w for _, w in COLS_PDF]
             vals = [
-                (str(row.get("referencia",       "") or "")[:18], 26, "L"),
-                (str(row.get("cliente",          "") or "")[:32], 50, "L"),
-                (str(row.get("pedimento",        "") or "")[:14], 22, "L"),
-                (pagado,                                            8, "C"),
-                (str(row.get("fecha_pago",       "") or "")[:10], 18, "C"),
-                (str(row.get("fecha_prim_sel",   "") or "")[:10], 18, "C"),
-                (str(row.get("f_e_contabilidad", "") or "")[:10], 18, "C"),
-                (str(row.get("fecha_cierre_adm", "") or "")[:10], 18, "C"),
-                (str(int(row.get("dias_trf", 0) or 0)),            9, "C"),
-                (str(int(row.get("dias_adm", 0) or 0)),            9, "C"),
-                (str(int(row.get("dias_cga", 0) or 0)),            9, "C"),
-                ((str(row.get("folio_proforma", "") or "").strip() or "-")[:14], 22, "L"),
-                ((str(row.get("num_fac_cga",    "") or "").strip() or "-")[:14], 22, "L"),
+                (str(row.get("referencia",       "") or "")[:18], _w[0],  "L"),
+                (str(row.get("cliente",          "") or "")[:32], _w[1],  "L"),
+                (str(row.get("pedimento",        "") or "")[:14], _w[2],  "L"),
+                (pagado,                                           _w[3],  "C"),
+                (str(row.get("fecha_pago",       "") or "")[:10], _w[4],  "C"),
+                (str(row.get("fecha_prim_sel",   "") or "")[:10], _w[5],  "C"),
+                (str(row.get("f_e_contabilidad", "") or "")[:10], _w[6],  "C"),
+                (str(row.get("fecha_cierre_adm", "") or "")[:10], _w[7],  "C"),
+                (str(int(row.get("dias_trf", 0) or 0)),           _w[8],  "C"),
+                (str(int(row.get("dias_adm", 0) or 0)),           _w[9],  "C"),
+                (str(int(row.get("dias_cga", 0) or 0)),           _w[10], "C"),
+                (("-" if str(row.get("folio_proforma", "") or "").strip() in ("", "nan", "NaN", "None") else str(row.get("folio_proforma", "")).strip())[:14], _w[11], "C"),
+                (("-" if (lambda v: v is None or str(v).strip() in ("", "nan", "NaN"))(row.get("num_fac_cga")) else str(int(float(str(row.get("num_fac_cga")).strip()))))[:14], _w[12], "C"),
             ]
             for txt, w, align in vals:
                 pdf.cell(w, 5.5, txt, border=1, align=align)
@@ -718,7 +843,6 @@ def vista_scorecard_v1():
     pdf_conds = [c for c in conds if "etapa_operacion" not in c]
     pdf_where = ("WHERE " + " AND ".join(pdf_conds)) if pdf_conds else ""
 
-    @st.cache_data(ttl=120)
     def _pdf(pw, fd):
         df_pdf = query_pg(f"""
             SELECT referencia, cliente, pedimento, sucursal, pedimento_pagado,
@@ -852,7 +976,7 @@ def vista_scorecard_v1():
             .map(color_cga,  subset=["Dias CGA"])
             .format({"Dias TRF": "{:.0f}", "Dias ADM": "{:.0f}", "Dias CGA": "{:.0f}",
                      "Proforma": lambda x: "-" if str(x) in ("nan", "None", "") else str(x),
-                     "Factura":  lambda x: "-" if str(x) in ("nan", "None", "") else str(x)},
+                     "Factura":  lambda x: "-" if x is None or str(x) in ("nan", "None", "") else str(int(float(x)))},
                     na_rep="-"),
         use_container_width=True,
         height=600,
