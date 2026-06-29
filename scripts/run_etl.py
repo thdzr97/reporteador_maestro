@@ -41,7 +41,7 @@ while True:
         logger.error(f"Error en ciclo ETL cumplimiento: {e}")
 
     try:
-        run_etl_sabana(dias_atras=2)
+        run_etl_sabana(dias_atras=7)
     except Exception as e:
         logger.error(f"Error ETL sábana: {e}")
 
