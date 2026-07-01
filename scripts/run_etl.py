@@ -7,8 +7,9 @@ import logging
 import sys
 import os
 
-sys.path.insert(0, '/var/www/html/ocmx/reporteador-maestro')
-os.chdir('/var/www/html/ocmx/reporteador-maestro')
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, BASE_DIR)
+os.chdir(BASE_DIR)
 
 from dotenv import load_dotenv
 load_dotenv()
