@@ -201,6 +201,7 @@ def _generar_pdf(df: pd.DataFrame, tipo_rep: str, tipo_op: str,
         ax.set_xlabel("Mes", fontsize=11)
         ax.set_ylabel("Operaciones", fontsize=11)
         ax.tick_params(axis="both", labelsize=11)
+        plt.xticks(rotation=0)
         plt.tight_layout()
         buf = io.BytesIO()
         plt.savefig(buf, format="png", dpi=120)
@@ -365,10 +366,10 @@ def _generar_pdf(df: pd.DataFrame, tipo_rep: str, tipo_op: str,
     pdf.ln(3)
 
     HEADERS = [
-        ("Patente/Aduana", 45), ("Referencia", 28), ("Cliente", 42),
-        ("Transporte",     30), ("F.Inicio",   20), ("F.Fin",   20),
-        ("Dias",           12), ("Meta",        12), ("Cumple",  19),
-    ]
+        ("Patente/Aduana", 60), ("Referencia", 32), ("Cliente", 55),
+        ("Transporte",     35), ("F.Inicio",   22), ("F.Fin",   22),
+        ("Dias",           13), ("Meta",        13), ("Cumple",  25),
+    ]  # total = 277mm (ancho útil A4 landscape con márgenes 10mm c/lado)
     # PROBLEMA 3 — guardar Mes si no existe
     if "Mes" not in df.columns:
         df["Mes"] = pd.to_datetime(df["pedimento_fecha_pago"]).dt.strftime("%B %Y").str.upper()
@@ -398,19 +399,19 @@ def _generar_pdf(df: pd.DataFrame, tipo_rep: str, tipo_op: str,
             trp = str(r.get("transporte_real", "") or r.get("transporte", ""))
             dias = str(r.get("dias_transcurridos", 0))
             meta = str(r.get("meta_aplicada", 0))
-            pdf.cell(45, 5, pat[:38], 1, 0, "L")
-            pdf.cell(28, 5, ref[:22], 1, 0, "C")
-            pdf.cell(42, 5, cli[:35], 1, 0, "L")
-            pdf.cell(30, 5, trp[:24], 1, 0, "C")
-            pdf.cell(20, 5, fi.strftime("%d/%m/%y") if pd.notna(fi) else "N/A", 1, 0, "C")
-            pdf.cell(20, 5, ff.strftime("%d/%m/%y") if pd.notna(ff) else "N/A", 1, 0, "C")
-            pdf.cell(12, 5, dias, 1, 0, "C")
-            pdf.cell(12, 5, meta, 1, 0, "C")
+            pdf.cell(60, 5, pat[:50], 1, 0, "L")
+            pdf.cell(32, 5, ref[:26], 1, 0, "C")
+            pdf.cell(55, 5, cli[:45], 1, 0, "L")
+            pdf.cell(35, 5, trp[:28], 1, 0, "C")
+            pdf.cell(22, 5, fi.strftime("%d/%m/%y") if pd.notna(fi) else "N/A", 1, 0, "C")
+            pdf.cell(22, 5, ff.strftime("%d/%m/%y") if pd.notna(ff) else "N/A", 1, 0, "C")
+            pdf.cell(13, 5, dias, 1, 0, "C")
+            pdf.cell(13, 5, meta, 1, 0, "C")
             if r.get("Cumple") == "SI CUMPLE":
                 pdf.set_text_color(0, 128, 0)
             else:
                 pdf.set_text_color(190, 0, 0)
-            pdf.cell(19, 5, r["Cumple"], 1, 1, "C")
+            pdf.cell(25, 5, r["Cumple"], 1, 1, "C")
             pdf.set_text_color(0, 0, 0)
         pdf.ln(3)
 
@@ -516,10 +517,32 @@ def render_cumplimiento():
     def _ir_inicio():
         st.session_state.vista = "inicio"
 
-    # ── Sidebar ───────────────────────────────────────────────────────────────
+    # ── Sidebar estilo PowerBI ───────────────────────────────────────────────
     with st.sidebar:
+        st.markdown("""
+        <style>
+        section[data-testid="stSidebar"] {
+            background: #f7f9fc;
+        }
+        .rm-filtro-label {
+            font-size: 0.78rem; font-weight: 700; color: #5f6b7a;
+            text-transform: uppercase; letter-spacing: 0.04em;
+            margin: 14px 0 4px 0; display: flex; align-items: center; gap: 6px;
+        }
+        .rm-filtro-card {
+            background: #ffffff; border: 1px solid #e3e8f0;
+            border-radius: 10px; padding: 2px 2px; margin-bottom: 2px;
+        }
+        div[data-testid="stSidebar"] hr { margin: 10px 0; }
+        </style>
+        """, unsafe_allow_html=True)
+
         st.button("← Volver al menu", on_click=_ir_inicio, use_container_width=True)
-        st.header("Filtros")
+        st.markdown(
+            '<div style="font-size:1.05rem;font-weight:700;color:#182B49;'
+            'margin:10px 0 6px 0;">🎛️ Filtros</div>',
+            unsafe_allow_html=True,
+        )
 
         # 1. Patente / Aduana
         hoy = date.today()
@@ -529,11 +552,13 @@ def render_cumplimiento():
         opciones_display = [o["display"] for o in opciones]
         opciones_valores = [o["valor"]   for o in opciones]
 
+        st.markdown('<div class="rm-filtro-label">📍 Patente / Aduana</div>', unsafe_allow_html=True)
         sel_display = st.multiselect(
             "Patente / Aduana",
             options=opciones_display,
             default=["🌍 TODAS"],
             key="cum_patentes",
+            label_visibility="collapsed",
         )
 
         if not sel_display or any("TODAS" in s for s in sel_display):
@@ -542,39 +567,46 @@ def render_cumplimiento():
             patentes_sel = [opciones_valores[opciones_display.index(s)]
                             for s in sel_display]
 
-        st.divider()
-
-        # 2. Tipo de reporte
+        st.markdown('<div class="rm-filtro-label">📊 Tipo de reporte</div>', unsafe_allow_html=True)
         tipo_rep = st.radio(
             "Tipo de reporte",
             ["Reporte Operativo", "Reporte Administrativo"],
             key="cum_tipo_rep",
+            label_visibility="collapsed",
         )
-        # 3. Tipo de operacion
+
+        st.markdown('<div class="rm-filtro-label">🚢 Tipo de operación</div>', unsafe_allow_html=True)
         tipo_op = st.radio(
             "Tipo de operacion",
             ["Todos", "Importación", "Exportación"],
             key="cum_tipo_op",
+            horizontal=True,
+            label_visibility="collapsed",
         )
 
-        # 4. Rango de fechas
-        fecha_ini = st.date_input("Desde", value=primer_dia,
-                                  min_value=date(2020, 1, 1), max_value=hoy,
-                                  key="cum_f1")
-        fecha_fin = st.date_input("Hasta", value=hoy,
-                                  min_value=fecha_ini, max_value=hoy,
-                                  key="cum_f2")
+        st.markdown('<div class="rm-filtro-label">📅 Periodo</div>', unsafe_allow_html=True)
+        c_f1, c_f2 = st.columns(2)
+        with c_f1:
+            fecha_ini = st.date_input("Desde", value=primer_dia,
+                                      min_value=date(2020, 1, 1), max_value=hoy,
+                                      key="cum_f1", label_visibility="collapsed")
+        with c_f2:
+            fecha_fin = st.date_input("Hasta", value=hoy,
+                                      min_value=fecha_ini, max_value=hoy,
+                                      key="cum_f2", label_visibility="collapsed")
 
+        st.markdown('<div class="rm-filtro-label">👤 Cliente</div>', unsafe_allow_html=True)
         cliente_filtro = st.text_input(
-            "Cliente (contiene)", placeholder="Ej: HIROTEC, SADABU", key="cum_cli")
+            "Cliente (contiene)", placeholder="Ej: HIROTEC, SADABU",
+            key="cum_cli", label_visibility="collapsed")
 
-        st.markdown("---")
+        st.markdown("<div style='margin-top:10px;'></div>", unsafe_allow_html=True)
         st.caption(
             "Filtros ETL: Solo pagados · "
             "Excluye V1/R1/V5/F4/F5/RC/A3"
         )
         generar = st.button(
-            "🔍 Generar Reporte",
+            "🔍  GENERAR REPORTE",
             type="primary",
             use_container_width=True,
         )
@@ -692,18 +724,49 @@ def render_cumplimiento():
     df_g["Etiqueta"] = df_g.apply(
         lambda r: f"{r['N']} ({r['N']/r['Total']*100:.1f}%)", axis=1)
 
+    df_bar = df_g.sort_values("Mes_Num").copy()
     fig_bar = px.bar(
-        df_g.sort_values("Mes_Num"), x="Mes", y="N", color="Cumple",
-        text="Etiqueta", barmode="stack",
+        df_bar, x="Mes", y="N", color="Cumple",
+        barmode="stack",
         color_discrete_map={"SI CUMPLE": "#2ecc71", "NO CUMPLE": "#e74c3c"},
         title="Cumplimiento Mensual",
+        custom_data=["Etiqueta", "Cumple"],
     )
-    fig_bar.update_traces(textposition="inside", textfont_size=14)
+    # Etiqueta interna solo para SI CUMPLE; NO CUMPLE sin texto (va como anotación)
+    fig_bar.update_traces(
+        texttemplate="%{customdata[0]}",
+        textposition="inside",
+        textfont_size=13,
+        insidetextanchor="middle",
+        hovertemplate="%{x} — %{customdata[0]}<extra></extra>",
+        selector={"name": "SI CUMPLE"},
+    )
+    fig_bar.update_traces(
+        text=None, texttemplate="",
+        hovertemplate="%{x} — %{customdata[0]}<extra></extra>",
+        selector={"name": "NO CUMPLE"},
+    )
+    # Anotaciones encima de cada barra para NO CUMPLE
+    anotaciones = []
+    totales_mes = df_bar.groupby("Mes")["N"].sum()
+    for _, fila in df_bar[df_bar["Cumple"] == "NO CUMPLE"].iterrows():
+        total_mes = totales_mes.get(fila["Mes"], 1)
+        anotaciones.append(dict(
+            x=fila["Mes"],
+            y=total_mes + total_mes * 0.02,
+            text=f"<b>{fila['Etiqueta']}</b>",
+            showarrow=False,
+            font=dict(size=12, color="#c0392b"),
+            xanchor="center",
+            yanchor="bottom",
+        ))
     fig_bar.update_layout(
         paper_bgcolor="rgba(255,255,255,1)",
         plot_bgcolor="rgba(255,255,255,1)",
         xaxis_title="Mes", yaxis_title="Operaciones",
-        margin=dict(t=60, l=60, r=30, b=50),
+        margin=dict(t=80, l=60, r=30, b=50),
+        height=440,
+        annotations=anotaciones,
     )
 
     df_pie_data = df.groupby("Cumple").size().reset_index(name="N")
@@ -713,11 +776,22 @@ def render_cumplimiento():
         color_discrete_map={"SI CUMPLE": "#2ecc71", "NO CUMPLE": "#e74c3c"},
         title="Proporcion Total",
     )
-    fig_pie.update_traces(textfont_size=16)
+    fig_pie.update_traces(
+        textfont_size=14,
+        textposition="auto",
+        textinfo="percent",
+        insidetextorientation="radial",
+        pull=[0.05 if v/df_pie_data["N"].sum() < 0.15 else 0
+              for v in df_pie_data["N"]],
+    )
     fig_pie.update_layout(
         paper_bgcolor="rgba(255,255,255,1)",
         plot_bgcolor="rgba(255,255,255,1)",
-        margin=dict(t=60, l=30, r=30, b=30),
+        margin=dict(t=60, l=20, r=20, b=20),
+        height=420,
+        showlegend=True,
+        legend=dict(orientation="v", yanchor="middle", y=0.5,
+                    xanchor="left", x=1.02, font=dict(size=13)),
     )
 
     # img_bar/img_pie para Excel (kaleido o None)
@@ -754,7 +828,7 @@ def render_cumplimiento():
     st.divider()
 
     # ── Graficas lado a lado ──────────────────────────────────────────────────
-    col1, col2 = st.columns([2, 1])
+    col1, col2 = st.columns([3, 2])
     with col1:
         st.plotly_chart(fig_bar, use_container_width=True)
     with col2:
@@ -764,8 +838,19 @@ def render_cumplimiento():
 
     # ── Detalle por mes con expanders ─────────────────────────────────────────
     st.subheader("Detalle por mes")
-    cols_show = ["pedimento", "pedimento_fecha_pago", "aduana", "tipo_operacion",
-                 "cliente", "transporte_real", "dias_transcurridos", "meta_aplicada", "Cumple"]
+    # Columnas en orden requerido (igual que Reporte SIR)
+    COLS_RENAME = {
+        "patente_aduana":       "Patente_Aduana",
+        "referencia":           "Referencia",
+        "cliente":              "Cliente",
+        "transporte_real":      "Transporte_Real",
+        "param_fecha_inicio":   "Param_Fecha_Inicio",
+        "param_fecha_fin":      "Param_Fecha_Fin",
+        "dias_transcurridos":   "Dias_Transcurridos",
+        "meta_aplicada":        "Meta_Aplicada",
+        "Cumple":               "Cumple",
+    }
+    cols_show = [c for c in COLS_RENAME.keys() if c in df.columns]
 
     for mes_num in sorted(df["Mes_Num"].unique()):
         df_m = df[df["Mes_Num"] == mes_num].copy()
@@ -776,10 +861,14 @@ def render_cumplimiento():
 
         with st.expander(
             f"{mes_label} — {total_m} operaciones | "
-            f"{cumple_m} cumplidas ({pct_m:.1f}%)"
+            f"{cumple_m} cumplidas ({pct_m:.1f}%)",
+            expanded=True
         ):
-            df_show = df_m[[c for c in cols_show if c in df_m.columns]].sort_values(
-                "pedimento_fecha_pago", ascending=False)
+            df_show = df_m[[c for c in cols_show if c in df_m.columns]].copy()
+            # ordenar por fecha antes de renombrar
+            if "param_fecha_fin" in df_show.columns:
+                df_show = df_show.sort_values("param_fecha_fin", ascending=False)
+            df_show = df_show.rename(columns=COLS_RENAME)
 
             def _color_rows(row):
                 color = "#d1e7dd" if row["Cumple"] == "SI CUMPLE" else "#f8d7da"
