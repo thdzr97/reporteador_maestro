@@ -33,7 +33,7 @@ QUERY_EXTRACCION = """
     SELECT DISTINCT
         [Referencia],
         [Patente],
-        [Nombre Aduana Despacho],
+        [Nombre Aduana Entrada],
         [Cliente],
         [Clave Pedimento],
         [Tipo Operación],
@@ -59,7 +59,7 @@ QUERY_EXTRACCION = """
 COLUMNAS_RENOMBRADAS = {
     "Referencia": "referencia",
     "Patente": "patente",
-    "Nombre Aduana Despacho": "aduana",
+    "Nombre Aduana Entrada": "aduana",
     "Cliente": "cliente",
     "Clave Pedimento": "clave_pedimento",
     "Tipo Operación": "tipo_operacion",
@@ -102,9 +102,10 @@ def transformar(df: pd.DataFrame) -> pd.DataFrame:
     for col in COLUMNAS_FECHA:
         if col in df.columns:
             df[col] = pd.to_datetime(df[col], dayfirst=True, errors="coerce")
-    df = df.drop_duplicates(subset=["referencia", "pedimento"], keep="first")
-    # La clave única en BD es pedimento — eliminar duplicados por esa clave
-    df = df.drop_duplicates(subset=["pedimento"], keep="first")
+    # Dedup solo filas 100% duplicadas por JOINs internos de la vista
+    # Granularidad correcta = referencia (un pedimento puede tener varias refs)
+    df = df.drop_duplicates(subset=["referencia", "patente", "pedimento",
+                                     "clave_pedimento", "cliente"], keep="first")
     # Convertir fechas a Python date/None para compatibilidad con pg_insert
     for col in COLUMNAS_FECHA:
         if col in df.columns:
@@ -134,7 +135,7 @@ def cargar(df: pd.DataFrame, modo: str = "replace") -> int:
             with engine.begin() as conn:
                 conn.execute(text(
                     f"ALTER TABLE {TABLA_DESTINO} "
-                    f"ADD CONSTRAINT uq_cumpl_pedimento UNIQUE (pedimento)"
+                    f"ADD CONSTRAINT uq_cumpl_ref UNIQUE (referencia)"
                 ))
     elif modo == "upsert":
         with engine.connect() as conn:
@@ -147,7 +148,7 @@ def cargar(df: pd.DataFrame, modo: str = "replace") -> int:
                 chunk = records[i:i + 500]
                 stmt = pg_insert(tabla).values(chunk)
                 stmt = stmt.on_conflict_do_update(
-                    index_elements=["pedimento"],
+                    index_elements=["referencia"],
                     set_={col: stmt.excluded[col]
                           for col in df.columns if col != "pedimento"}
                 )
